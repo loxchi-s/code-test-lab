@@ -61,7 +61,12 @@ jobs:
       - name: Generate SBOM from the image without executing it
         id: image-sbom
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
-        run: syft "code-test-lab:${{ github.sha }}" -o "cyclonedx-json=$RUNNER_TEMP/image-sbom.json"
+        run: |
+          : > "$RUNNER_TEMP/syft-empty.yaml"
+          cd "$RUNNER_TEMP"
+          syft --config "$RUNNER_TEMP/syft-empty.yaml" \
+            "code-test-lab:${{ github.sha }}" \
+            -o "cyclonedx-json=$RUNNER_TEMP/image-sbom.json"
 
       - name: Install trusted Grype vulnerability scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
@@ -76,4 +81,8 @@ jobs:
 
       - name: Scan image SBOM with trusted Grype
         if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
-        run: grype "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
+        run: |
+          : > "$RUNNER_TEMP/grype-empty.yaml"
+          cd "$RUNNER_TEMP"
+          grype --config "$RUNNER_TEMP/grype-empty.yaml" \
+            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
