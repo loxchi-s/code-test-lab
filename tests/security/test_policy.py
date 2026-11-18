@@ -36,7 +36,10 @@ def _is_single_fail_fast_docker_run(script: str) -> bool:
         and tokens.count("docker") == 1
         and "pytest" in normalized
         and not any(token in shell_operators for token in tokens)
-    )def _contains_untrusted_credential(expression: str) -> bool:
+    )
+
+
+def _contains_untrusted_credential(expression: str) -> bool:
     return bool(re.search(
         r"""\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\s*(?:\.\s*token\b|\[\s*['"]token['"]\s*\]))""",
         expression,
