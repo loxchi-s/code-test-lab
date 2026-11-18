@@ -78,11 +78,11 @@ jobs:
           restore_workflow_commands() {
             local exit_code=$?
             trap - EXIT
-            printf '::%s::\\n' "$marker"
+            printf '::%s::\n' "$marker"
             exit "$exit_code"
           }
           trap restore_workflow_commands EXIT
-          printf '::stop-commands::%s\\n' "$marker"
+          printf '::stop-commands::%s\n' "$marker"
           docker run --rm \
             --network none \
             --read-only \
