@@ -58,7 +58,6 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     execution = policy["execution"]
     expected_policy_flags = (
         "--network none",
-        "--read-only",
         f"--tmpfs /tmp:rw,noexec,nosuid,size={execution['tmpfs_size']}",
         f"--memory {execution['memory']}",
         f"--memory-swap {execution['memory']}",
@@ -72,6 +71,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         flag, value = flag_value.split(" ", maxsplit=1)
         assert quality_run.count(f"{flag} {value}") == 1
         assert quality_run.count(f"{flag} ") == 1
+    assert quality_run.count("--read-only") == 1
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
