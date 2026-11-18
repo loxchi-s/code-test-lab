@@ -44,6 +44,12 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
             direct_keys: set[Any] = set()
             for key_node, value_node in node.value:
                 if key_node.tag == "tag:yaml.org,2002:merge":
+                    if "<<merge>>" in direct_keys:
+                        raise yaml.constructor.ConstructorError(
+                            "while constructing a mapping", node.start_mark,
+                            "found duplicate merge key '<<'", key_node.start_mark,
+                        )
+                    direct_keys.add("<<merge>>")
                     merge_nodes = (
                         value_node.value
                         if isinstance(value_node, yaml.SequenceNode)
@@ -71,8 +77,12 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
             for child in node.value:
                 self._validate_mapping_tree(child, visited)
 
-    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+    def construct_document(self, node: yaml.Node) -> Any:
+        """Validate the untouched source graph before PyYAML flattens merge nodes."""
         self._validate_mapping_tree(node)
+        return super().construct_document(node)
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
         self.flatten_mapping(node)
         return super().construct_mapping(node, deep=deep)
 
