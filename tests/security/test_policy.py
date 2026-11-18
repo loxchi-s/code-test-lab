@@ -432,6 +432,25 @@ def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPat
         resolve_image_id("local:test", DOCKER_TARGET)
 
 
+def test_resolve_image_id_accepts_digest_qualified_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
+    image = "registry.example/team/image@sha256:" + "b" * 64
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append(argv)
+        return _docker_info_or_metadata(argv, metadata)
+
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
+
+    assert resolve_image_id(image, DOCKER_TARGET) == IMAGE_ID
+    assert calls[-1][-1] == image
+    assert calls[-1][-3:-1] == ["{{json .}}", image]
+
+
 def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPatch) -> None:
     metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
