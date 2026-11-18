@@ -180,7 +180,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert int(job["timeout-minutes"]) == 45
     run_steps = [step.get("run", "") for step in job["steps"]]
     assert any("docker build" in run for run in run_steps)
-    assert any("docker run" in run for run in run_steps)
+    assert any("docker run" in run and "pytest" in run for run in run_steps)
     assert not any("pip install -e" in run for run in run_steps)
 
 
@@ -238,18 +238,25 @@ def test_policy_rejects_repository_secret_exposure(tmp_path: Path) -> None:
 
 
 def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
+    one_minute_policy = tmp_path / "one-minute-policy.yml"
+    one_minute_policy.write_text(
+        POLICY_PATH.read_text(encoding="utf-8").replace(
+            "timeout_minutes: 20", "timeout_minutes: 1",
+        ),
+        encoding="utf-8",
+    )
 
     def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
         calls.append((argv, kwargs))
         if argv[1] == "run":
-            raise TimeoutExpired(argv, timeout=1200)
+            raise TimeoutExpired(argv, timeout=60)
         return CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr("sys.argv", [
-        "code-test-lab", "--policy", str(POLICY_PATH), "--image", IMAGE_ID,
+        "code-test-lab", "--policy", str(one_minute_policy), "--image", IMAGE_ID,
         "--", "python", "-m", "pytest",
     ])
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", fake_run)
@@ -258,7 +265,7 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     assert main() == 124
     assert calls[0][0][0:3] == ["docker", "run", "--rm"]
-    assert calls[0][1]["timeout"] == 1200
+    assert calls[0][1]["timeout"] == 60
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
 
