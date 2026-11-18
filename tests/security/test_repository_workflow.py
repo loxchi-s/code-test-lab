@@ -100,11 +100,18 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     job = workflow["jobs"]["python-sandbox"]
     steps = job["steps"]
     build = next(step for step in steps if step.get("id") == "build-image")
+    capability_step = next(
+        step for step in steps
+        if step.get("name") == "Verify Docker daemon PID limit support"
+    )
     run_step = next(
         step for step in steps
         if step.get("name") == "Run target pytest suite without network or credentials"
     )
 
+    assert capability_step["timeout-minutes"] == "2"
+    assert "docker info --format '{{json .Warnings}}'" in capability_step["run"]
+    assert 'test("pids limit"; "i")' in capability_step["run"]
     assert build["working-directory"] == "sandbox-harness"
     assert shlex.split(build["run"]) == [
         "docker", "build", "--pull", "--tag",
