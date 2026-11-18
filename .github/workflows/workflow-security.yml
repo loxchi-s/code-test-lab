@@ -52,7 +52,7 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
       - name: Scan all commits including merge patches
-        run: gitleaks git --redact --no-banner --log-opts="--all --full-history --diff-merges=1"
+        run: gitleaks git --redact --no-banner --log-opts="--all --full-history --diff-filter=tuxdb --diff-merges=first-parent"
 
   zizmor:
     name: GitHub Actions security audit
