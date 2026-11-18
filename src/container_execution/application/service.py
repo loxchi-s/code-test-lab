@@ -3,7 +3,9 @@ from __future__ import annotations
 from uuid import uuid4
 
 from container_execution.domain.execution import (
-    ExecutionRequest, ExecutionStatus, ExecutionTarget,
+    ExecutionRequest,
+    ExecutionStatus,
+    ExecutionTarget,
 )
 from container_execution.ports.execution_runtime import ExecutionRuntime
 
