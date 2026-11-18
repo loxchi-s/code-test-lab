@@ -39,9 +39,9 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           case "$TARGET" in
-            unit) TEST_COMMAND='python -m pytest -q' ;;
-            lint) TEST_COMMAND='ruff check src tests' ;;
-            security) TEST_COMMAND='python -m compileall -q src && python -m pytest -q tests/security' ;;
+            unit) TEST_COMMAND='python -m pytest -q -p no:cacheprovider' ;;
+            lint) TEST_COMMAND='ruff check --no-cache src tests' ;;
+            security) TEST_COMMAND='python -m pytest -q -p no:cacheprovider tests/security' ;;
             *) echo "Unsupported target" >&2; exit 2 ;;
           esac
           docker run --rm             --network none             --read-only             --tmpfs /tmp:rw,noexec,nosuid,size=256m             --memory 2g --cpus 2 --pids-limit 256             --cap-drop ALL             --security-opt no-new-privileges             --user 10001:10001             --env TARGET="$TARGET"             code-test-lab:${{ github.sha }}             sh -lc "$TEST_COMMAND"
