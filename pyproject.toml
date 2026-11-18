@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "code-test-lab"
-version = "0.3.0"
+version = "0.3.1"
 description = "Sandbox-first isolated code testing harness with GitHub Actions CI."
 requires-python = ">=3.12"
 dependencies = []
@@ -24,7 +24,6 @@ packages = ["src/code_test_lab"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
