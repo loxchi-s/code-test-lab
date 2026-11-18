@@ -9,19 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  workflow-security:
-    name: Workflow lint and security audit
+  actionlint:
+    name: GitHub Actions syntax
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 0
           persist-credentials: false
-
       - name: Install actionlint
         run: |
           curl --fail --silent --show-error --location \
@@ -31,10 +28,20 @@ jobs:
             | sha256sum --check
           tar -xzf actionlint.tar.gz actionlint
           sudo install actionlint /usr/local/bin/actionlint
-
-      - name: Lint GitHub Actions workflows
+      - name: Lint workflows
         run: actionlint -color
 
+  gitleaks:
+    name: Full-history secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Install Gitleaks
         run: |
           curl --fail --silent --show-error --location \
@@ -44,14 +51,24 @@ jobs:
             | sha256sum --check
           tar -xzf gitleaks.tar.gz gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
+      - name: Scan all commits including merge patches
+        run: gitleaks git --redact --no-banner --log-opts="--all --full-history --diff-merges=1"
 
-      - name: Scan repository history for leaked secrets
-        run: gitleaks git --redact --no-banner
-
-      - name: Install zizmor
-        run: python -m pip install --disable-pip-version-check "zizmor==1.32.0"
-
-      - name: Audit GitHub Actions security
-        run: zizmor --format=github --min-severity=high .
+  zizmor:
+    name: GitHub Actions security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Create isolated tool environment
+        run: python -I -m venv "${{ runner.temp }}/zizmor-venv"
+      - name: Install pinned zizmor outside the checkout
+        run: "${{ runner.temp }}/zizmor-venv/bin/python -I -m pip install --disable-pip-version-check zizmor==1.32.0"
+      - name: Audit workflow security
+        run: "${{ runner.temp }}/zizmor-venv/bin/zizmor --format=github --min-severity=high ."
         env:
           GH_TOKEN: ${{ github.token }}
