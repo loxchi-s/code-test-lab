@@ -504,6 +504,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'mktemp -d "$RUNNER_TEMP/syft.' in syft_install_step["run"]
     assert '--output "$scanner_dir/syft.tar.gz"' in syft_install_step["run"]
     assert "sha256sum --check" in syft_install_step["run"]
+    assert not any("syft.tar.gz" in step.get("run", "") and "mktemp -d" not in step.get("run", "") for step in job["steps"])
     assert 'syft --config "$RUNNER_TEMP/syft-empty.yaml"' in sbom_step["run"]
     assert 'cd "$RUNNER_TEMP"' in sbom_step["run"]
     assert "cyclonedx-json=" in sbom_step["run"]
@@ -516,6 +517,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'mktemp -d "$RUNNER_TEMP/grype.' in grype_install_step["run"]
     assert '--output "$scanner_dir/grype.tar.gz"' in grype_install_step["run"]
     assert "sha256sum --check" in grype_install_step["run"]
+    assert not any("grype.tar.gz" in step.get("run", "") and "mktemp -d" not in step.get("run", "") for step in job["steps"])
     assert 'grype --config "$RUNNER_TEMP/grype-empty.yaml"' in grype_scan_step["run"]
     assert 'cd "$RUNNER_TEMP"' in grype_scan_step["run"]
     assert '"sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low' in grype_scan_step["run"]
