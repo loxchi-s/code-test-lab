@@ -58,6 +58,8 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
         "--user 10001:10001",
+        "--env FTP_PROXY= --env NO_PROXY=",
+        "--env ftp_proxy= --env no_proxy=",
         "--env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "-m pytest -q -p no:cacheprovider /workspace/target",
     ):
