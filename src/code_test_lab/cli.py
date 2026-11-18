@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import subprocess  # nosec B404 - Docker is invoked with an argv list, never through a shell.
 import sys
 import uuid
@@ -17,6 +18,15 @@ from .docker import (
     resolve_image_id,
 )
 from .policy import PolicyError, load_execution_policy
+
+
+class _SigtermReceived(Exception):
+    """Raised from the signal handler to unwind the Docker client call."""
+
+
+def _raise_on_sigterm(signum: int, frame: object) -> None:
+    del signum, frame
+    raise _SigtermReceived
 
 
 def main() -> int:
@@ -42,10 +52,15 @@ def main() -> int:
             docker_target=docker_target,
         )
         container_started = True
-        completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
-            docker_argv, check=False, shell=False,
-            timeout=float(execution["timeout_minutes"]) * 60,
-        )
+        previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, _raise_on_sigterm)
+        try:
+            completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
+                docker_argv, check=False, shell=False,
+                timeout=float(execution["timeout_minutes"]) * 60,
+            )
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm_handler)
         if (
             completed.returncode != 0
             and container_name is not None
@@ -63,6 +78,16 @@ def main() -> int:
     except (ValueError, TypeError) as exc:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
+    except _SigtermReceived:
+        cleanup_ok = container_name is not None and remove_container(container_name, docker_target)
+        if not cleanup_ok:
+            print(
+                "Execution received SIGTERM and cleanup could not be confirmed; "
+                "the container may still be running.",
+                file=sys.stderr,
+            )
+            return 125
+        return 143
     except subprocess.TimeoutExpired:
         cleanup_ok = (
             container_name is not None and remove_container(container_name, docker_target)
