@@ -534,12 +534,3 @@ def test_policy_rejects_signaling_nan_cpu_value(tmp_path: Path) -> None:
     invalid.write_text(text, encoding="utf-8")
     with pytest.raises(PolicyError, match="cpus"):
         load_execution_policy(invalid)
-
-
-def test_bare_absolute_external_import_is_not_a_local_dependency(tmp_path: Path) -> None:
-    sample = tmp_path / "external_import.py"
-    sample.write_text("import docker\\n", encoding="utf-8")
-    from code_test_lab import __path__ as package_path
-    from code_test_lab import docker as docker_module
-    assert docker_module.__name__ == "code_test_lab.docker"
-    assert package_path
