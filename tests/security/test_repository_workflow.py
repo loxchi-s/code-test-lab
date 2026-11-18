@@ -158,7 +158,7 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert command[:2] == ["-I", "-c"]
     launcher = command[2]
     assert launcher.index("import pytest") < launcher.index('sys.path.insert(0, "/workspace/target")')
-    assert "pytest.main" in launcher
+    assert "raise SystemExit(pytest.main(" in launcher
     assert '"/workspace/target"' in launcher
     assert "--privileged" not in tokens
     assert not any("docker.sock" in token for token in tokens)
