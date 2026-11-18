@@ -33,8 +33,8 @@ jobs:
             --tmpfs /tmp:rw,noexec,nosuid,size=256m \
             --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
-            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= \
-            --env http_proxy= --env https_proxy= --env all_proxy= \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
             --env PYTHONPYCACHEPREFIX=/tmp/pycache --env XDG_CACHE_HOME=/tmp/cache \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
@@ -56,8 +56,8 @@ jobs:
             --tmpfs /tmp:rw,noexec,nosuid,size=128m \
             --memory 1g --memory-swap 1g --cpus 1 --pids-limit 128 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=2 \
-            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= \
-            --env http_proxy= --env https_proxy= --env all_proxy= \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
             --env XDG_CACHE_HOME=/tmp/cache \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
