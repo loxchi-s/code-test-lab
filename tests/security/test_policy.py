@@ -77,7 +77,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     )
     docker_options = docker_tokens[2:image_index]
     approved_options = {
-        "--network", "--read-only", "--tmpfs", "--memory", "--memory-swap",
+        "--rm", "--network", "--read-only", "--tmpfs", "--memory", "--memory-swap",
         "--cpus", "--pids-limit", "--log-driver", "--log-opt", "--env",
         "--cap-drop", "--security-opt", "--user", "--entrypoint",
     }
@@ -86,7 +86,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     while index < len(docker_options):
         option = docker_options[index]
         assert option in approved_options, f"unapproved Docker option: {option}"
-        if option == "--read-only":
+        if option in {"--rm", "--read-only"}:
             option_values.setdefault(option, []).append("true")
             index += 1
             continue
@@ -500,9 +500,11 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     )
     assert "TRUSTED_BASE_SHA" in scan_step["env"]
     assert "git worktree add" in scan_step["run"]
-    assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
+    assert "gitleaks git ." in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
+    assert "--ignore-gitleaks-allow" in scan_step["run"]
+    assert "--diff-filter=uxdbT" in scan_step["run"]
 
     zizmor_job = workflow["jobs"]["zizmor"]
     audit = next(
