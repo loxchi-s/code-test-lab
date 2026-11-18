@@ -118,5 +118,5 @@ def test_internal_imports_detects_package_root_aliases(tmp_path: Path) -> None:
 
 def test_bare_absolute_external_import_is_not_a_local_dependency(tmp_path: Path) -> None:
     sample = tmp_path / "external_import.py"
-    sample.write_text("import docker\\n", encoding="utf-8")
+    sample.write_text("import docker\n", encoding="utf-8")
     assert _internal_imports(sample) == set()
