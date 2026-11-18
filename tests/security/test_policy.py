@@ -404,6 +404,13 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     command_tokens = shlex.split(command)
     assert command_tokens[:2] == ["gitleaks", "git"]
     assert command_tokens[2] == "$GITHUB_WORKSPACE"
+    assert command_tokens[command_tokens.index("--config") + 1] == "$trusted_config"
+    assert (
+        command_tokens[command_tokens.index("--gitleaks-ignore-path") + 1]
+        == "$trusted_ignore"
+    )
+    assert "--redact" in command_tokens
+    assert "--no-banner" in command_tokens
     assert (
         '--log-opts=--all --full-history --diff-filter=uxdb --diff-merges=first-parent'
         in command_tokens
