@@ -30,7 +30,7 @@ def main() -> int:
         docker_argv = build_docker_command(
             image_id, command, execution, container_name=container_name,
         )
-        completed = subprocess.run(
+        completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
             docker_argv, check=False, shell=False,
             timeout=float(execution["timeout_minutes"]) * 60,
         )
