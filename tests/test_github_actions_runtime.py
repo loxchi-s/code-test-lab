@@ -1,10 +1,10 @@
-import pytest
+import io\nimport zipfile\n\nimport pytest
 
 from container_execution.adapters.github_actions.runtime import (
     GitHubActionsError,
     GitHubActionsRuntime,
 )
-from container_execution.domain.execution import (
+from container_execution.domain.execution_result import ExecutionResult\nfrom container_execution.domain.execution import (
     ExecutionRequest,
     ExecutionStatus,
     ExecutionTarget,
@@ -24,7 +24,7 @@ async def test_dispatch_sends_only_fixed_workflow_inputs(monkeypatch) -> None:
         return 204, {}
 
     monkeypatch.setattr(runtime, "_request", fake_request)
-    request = ExecutionRequest("a" * 32, ExecutionTarget.UNIT, "main")
+    request = ExecutionRequest("a" * 32, ExecutionTarget.UNIT, "feature/test")
 
     await runtime.dispatch(request)
 
@@ -201,7 +201,7 @@ async def test_lookup_url_encodes_branch_query(monkeypatch) -> None:
 
     await runtime.status("f" * 32, "feature/test-branch")
 
-    assert "branch=feature%2Ftest-branch" in captured["path"]
+    assert "branch=main" in captured["path"]\n    assert "feature%2Ftest-branch" not in captured["path"]
     assert "event=workflow_dispatch" in captured["path"]
 
 
@@ -253,3 +253,97 @@ async def test_cancel_rejects_invalid_run_identifier_before_request(monkeypatch)
 
     assert len(calls) == 1
     assert calls[0][0] == "GET"
+
+
+def make_result_archive() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "metadata.txt",
+            "execution_id=" + "f" * 32 + "\\n"
+            "target=unit\\n"
+            "source_ref=feature/test\\n"
+            "commit_sha=" + "a" * 40 + "\\n"
+            "exit_code=1\\n",
+        )
+        archive.writestr("stdout.log", "1 failed, 2 passed")
+        archive.writestr("stderr.log", "AssertionError")
+    return buffer.getvalue()
+
+
+async def test_result_downloads_and_parses_execution_artifact(monkeypatch) -> None:
+    execution_id = "f" * 32
+    runtime = make_runtime()
+    calls = []
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        calls.append((method, path))
+        if path.startswith("actions/workflows/"):
+            return 200, {
+                "workflow_runs": [{
+                    "id": 123,
+                    "display_title": f"Container execution {execution_id}",
+                    "status": "completed",
+                    "conclusion": "failure",
+                }]
+            }
+        if path == "actions/runs/123/artifacts?per_page=100":
+            return 200, {
+                "artifacts": [{"id": 456, "name": f"execution-{execution_id}", "expired": False}]
+            }
+        raise AssertionError(f"Unexpected GitHub API request: {method} {path}")
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+    monkeypatch.setattr(runtime, "_download_artifact", lambda artifact_id: make_result_archive())
+
+    result = await runtime.result(execution_id, "feature/test")
+
+    assert isinstance(result, ExecutionResult)
+    assert result.status is ExecutionStatus.FAILED
+    assert result.exit_code == 1
+    assert result.stdout == "1 failed, 2 passed"
+    assert result.stderr == "AssertionError"
+    assert result.source_ref == "feature/test"
+    assert result.commit_sha == "a" * 40
+    assert calls[-1] == ("GET", "actions/runs/123/artifacts?per_page=100")
+
+
+async def test_result_returns_none_until_artifact_is_uploaded(monkeypatch) -> None:
+    execution_id = "e" * 32
+    runtime = make_runtime()
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        if path.startswith("actions/workflows/"):
+            return 200, {
+                "workflow_runs": [{
+                    "id": 124,
+                    "display_title": f"Container execution {execution_id}",
+                    "status": "completed",
+                    "conclusion": "success",
+                }]
+            }
+        return 200, {"artifacts": []}
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+    assert await runtime.result(execution_id, "main") is None
+
+
+async def test_result_returns_in_progress_before_artifact_lookup(monkeypatch) -> None:
+    execution_id = "d" * 32
+    runtime = make_runtime()
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        return 200, {
+            "workflow_runs": [{
+                "id": 125,
+                "display_title": f"Container execution {execution_id}",
+                "status": "in_progress",
+                "conclusion": None,
+            }]
+        }
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+    result = await runtime.result(execution_id, "main")
+    assert result is not None
+    assert result.status is ExecutionStatus.IN_PROGRESS
+    assert result.exit_code is None
