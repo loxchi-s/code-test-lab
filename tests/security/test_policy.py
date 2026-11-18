@@ -650,7 +650,7 @@ def test_policy_rejects_excessive_yaml_alias_expansion(tmp_path: Path) -> None:
     aliases = "base: &base {a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10}\n"
     for index in range(12):
         source = "base" if index == 0 else f"layer{index - 1}"
-        aliases += f"layer{index}: &layer{index} {{<<: *{source}}}\n"
+        aliases += f"layer{index}: &layer{index} {{<<: [*{source}, *{source}]}}\n"
     aliases += "execution: {<<: *layer11}\n"
     invalid.write_text(aliases + policy, encoding="utf-8")
     with pytest.raises(PolicyError, match="expansion"):
