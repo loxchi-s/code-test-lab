@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -30,12 +31,13 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
-        self.flatten_mapping(node)
-        mapping: dict[Any, Any] = {}
-        for key_node, value_node in node.value:
+        direct_keys: set[Any] = set()
+        for key_node, _ in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
             key = self.construct_object(key_node, deep=deep)
             try:
-                duplicate = key in mapping
+                duplicate = key in direct_keys
             except TypeError as exc:
                 raise yaml.constructor.ConstructorError(
                     "while constructing a mapping", node.start_mark,
@@ -46,8 +48,10 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
                     "while constructing a mapping", node.start_mark,
                     f"found duplicate key {key!r}", key_node.start_mark,
                 )
-            mapping[key] = self.construct_object(value_node, deep=deep)
-        return mapping
+            direct_keys.add(key)
+
+        self.flatten_mapping(node)
+        return super().construct_mapping(node, deep=deep)
 
 
 def _size_in_mib(
@@ -108,14 +112,21 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
     _size_in_mib(execution["tmpfs_size"], key="tmpfs_size", maximum=_MAX_TMPFS_MIB)
 
     cpus = execution["cpus"]
+    try:
+        cpu_value = Decimal(str(cpus))
+    except (InvalidOperation, ValueError):
+        cpu_value = Decimal("NaN")
+    nano_cpus = cpu_value * Decimal(1_000_000_000)
     if (
         isinstance(cpus, bool)
         or not isinstance(cpus, (int, float))
-        or not 0 < cpus <= _MAX_CPUS
-        or not (float(cpus) * 1_000_000_000).is_integer()
+        or not cpu_value.is_finite()
+        or cpu_value < Decimal("0.01")
+        or cpu_value > Decimal(_MAX_CPUS)
+        or nano_cpus != nano_cpus.to_integral_value()
     ):
         raise PolicyError(
-            f"Execution setting 'cpus' must be in range (0, {_MAX_CPUS}] "
+            f"Execution setting 'cpus' must be in range [0.01, {_MAX_CPUS}] "
             "and representable as whole NanoCPUs"
         )
 
