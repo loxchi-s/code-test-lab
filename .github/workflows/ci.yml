@@ -24,3 +24,49 @@ jobs:
       - run: ruff check src tests
       - run: python -m pytest -q
       - run: python -m compileall -q src
+
+  container-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build isolated test image
+        run: docker build --pull --tag code-test-lab:${{ github.sha }} .
+      - name: Run unit tests in restricted container
+        run: |
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 2g --cpus 2 --pids-limit 256 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --user 10001:10001 \
+            code-test-lab:${{ github.sha }} \
+            python -m pytest -q -p no:cacheprovider
+      - name: Run lint in restricted container
+        run: |
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 2g --cpus 2 --pids-limit 256 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --user 10001:10001 \
+            code-test-lab:${{ github.sha }} \
+            ruff check --no-cache src tests
+      - name: Run security tests in restricted container
+        run: |
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 2g --cpus 2 --pids-limit 256 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --user 10001:10001 \
+            code-test-lab:${{ github.sha }} \
+            python -m pytest -q -p no:cacheprovider tests/security
