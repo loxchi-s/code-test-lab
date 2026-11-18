@@ -34,15 +34,16 @@ jobs:
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= \
+            --env PYTHONPYCACHEPREFIX=/tmp/pycache --env XDG_CACHE_HOME=/tmp/cache \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
             --entrypoint /bin/sh \
             code-test-lab:${{ github.sha }} \
-            -ec 'ruff check src tests
+            -ec 'ruff check --no-cache src tests
             lint-imports
             python -m pytest -q -p no:cacheprovider
             python -m compileall -q src
-            mypy src
+            mypy --cache-dir=/tmp/mypy_cache src
             bandit -r src'
 
       - name: Audit installed dependencies in a restricted network container
