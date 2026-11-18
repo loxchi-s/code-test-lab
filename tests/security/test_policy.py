@@ -444,7 +444,7 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
         step for step in gitleaks_job["steps"]
         if step.get("name") == "Scan all commits using trusted base-branch rules"
     )
-    assert "TRUSTED_BASE_REF" in scan_step["env"]
+    assert "TRUSTED_BASE_SHA" in scan_step["env"]
     assert "git worktree add" in scan_step["run"]
     assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
