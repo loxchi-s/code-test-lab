@@ -1,4 +1,5 @@
 import re
+import re
 import shlex
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
@@ -38,9 +39,33 @@ def _workflow() -> dict:
     return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
+def _has_unquoted_newline(script: str) -> bool:
+    """Detect command-separating newlines while allowing quoted multiline arguments."""
+    quote: str | None = None
+    escaped = False
+    for character in script:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+            continue
+        if character in {"'", '"'}:
+            quote = character
+        elif character in {"\n", "\r"}:
+            return True
+    return False
+
+
 def _is_single_fail_fast_docker_run(script: str) -> bool:
-    """Reject shell suffixes that could mask the Docker command exit status."""
-    normalized = re.sub(r"\\\n\s*", " ", script)
+    """Reject host-side shell suffixes that could mask the Docker command exit status."""
+    normalized = re.sub(r"\\\n\s*", " ", script).rstrip()
+    if _has_unquoted_newline(normalized):
+        return False
     lexer = shlex.shlex(normalized, posix=True, punctuation_chars=";&|")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -49,14 +74,26 @@ def _is_single_fail_fast_docker_run(script: str) -> bool:
     return (
         tokens[:2] == ["docker", "run"]
         and tokens.count("docker") == 1
-        and "pytest" in normalized
         and not any(token in shell_operators for token in tokens)
     )
-
 
 def _normalize_read_only_option(option: str) -> str:
     """Canonicalize Docker's explicit true spelling before allowlist validation."""
     return "--read-only" if option == "--read-only=true" else option
+
+
+def _iter_strings(value: object):
+    """Yield original string values recursively without YAML re-serialization."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str):
+                yield key
+            yield from _iter_strings(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _iter_strings(child)
 
 
 def _contains_untrusted_credential(expression: str) -> bool:
@@ -85,10 +122,19 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     assert "pull_request_target" not in event_names
 
     container_job = workflow["jobs"]["quality"]
-    assert not _contains_untrusted_credential(yaml.dump(workflow.get("env", {})))
-    assert not _contains_untrusted_credential(yaml.dump(container_job.get("env", {})))
+    assert not any(
+        _contains_untrusted_credential(value)
+        for value in _iter_strings(workflow.get("env", {}))
+    )
+    assert not any(
+        _contains_untrusted_credential(value)
+        for value in _iter_strings(container_job.get("env", {}))
+    )
     for step in container_job["steps"]:
-        assert not _contains_untrusted_credential(yaml.dump(step))
+        assert not any(
+            _contains_untrusted_credential(value)
+            for value in _iter_strings(step)
+        )
 
     quality_run = next(
         step["run"] for step in container_job["steps"]
