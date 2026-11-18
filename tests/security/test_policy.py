@@ -1,4 +1,5 @@
 import re
+import shlex
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 
@@ -48,6 +49,8 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     assert "pull_request_target" not in event_names
 
     container_job = workflow["jobs"]["quality"]
+    assert not _contains_untrusted_credential(yaml.dump(workflow.get("env", {})))
+    assert not _contains_untrusted_credential(yaml.dump(container_job.get("env", {})))
     for step in container_job["steps"]:
         assert not _contains_untrusted_credential(yaml.dump(step))
 
@@ -67,11 +70,35 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
     )
+    docker_tokens = shlex.split(quality_run)
+    image_index = next(
+        index for index, token in enumerate(docker_tokens)
+        if token.startswith("code-test-lab:")
+    )
+    docker_options = docker_tokens[2:image_index]
     for flag_value in expected_policy_flags:
         flag, value = flag_value.split(" ", maxsplit=1)
-        assert quality_run.count(f"{flag} {value}") == 1
-        assert quality_run.count(f"{flag} ") == 1
-    assert quality_run.count("--read-only") == 1
+        assert docker_options.count(flag) == 1
+        assert docker_options[docker_options.index(flag) + 1] == value
+    assert docker_options.count("--read-only") == 1
+    assert docker_options.count("--log-driver") == 1
+    assert docker_options[docker_options.index("--log-driver") + 1] == "json-file"
+    log_options = [
+        docker_options[index + 1]
+        for index, token in enumerate(docker_options)
+        if token == "--log-opt"
+    ]
+    assert log_options == ["max-size=10m", "max-file=3"]
+    forwarded_env = [
+        docker_options[index + 1]
+        for index, token in enumerate(docker_options)
+        if token == "--env"
+    ]
+    assert forwarded_env == [
+        "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=",
+        "http_proxy=", "https_proxy=", "all_proxy=",
+        "PYTHONPYCACHEPREFIX=/tmp/pycache", "XDG_CACHE_HOME=/tmp/cache",
+    ]
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
@@ -201,6 +228,14 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     job = workflow["jobs"]["quality"]
     assert int(job["timeout-minutes"]) == 45
     run_steps = [step.get("run", "") for step in job["steps"]]
+    build_step = next(step for step in job["steps"] if step.get("name") == "Build validation image")
+    audit_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Audit installed dependencies in a restricted network container"
+    )
+    assert build_step["id"] == "build-image"
+    assert "steps.build-image.outcome == 'success'" in audit_step["if"]
+    assert "!cancelled()" in audit_step["if"]
     assert any("docker build" in run for run in run_steps)
     assert any("docker run" in run and "pytest" in run for run in run_steps)
     assert not any("pip install -e" in run for run in run_steps)
@@ -219,6 +254,7 @@ def test_container_timeout_is_derived_from_policy() -> None:
         ('memory: "2g"', 'memory: "1m"', "memory"),
         ('tmpfs_size: "256m"', 'tmpfs_size: "9999m"', "tmpfs_size"),
         ("cpus: 2", "cpus: 999", "cpus"),
+        ("cpus: 2", "cpus: 0.001", "0.01"),
         ("cpus: 2", "cpus: 0.1234567891", "NanoCPUs"),
         ("pids_limit: 256", "pids_limit: 99999", "pids_limit"),
         ("timeout_minutes: 20", "timeout_minutes: 21", "timeout_minutes"),
@@ -358,3 +394,72 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
         "/zizmor-venv/bin/python -I -m pip" in step.get("run", "")
         for step in zizmor_steps
     )
+
+
+def test_policy_accepts_exact_decimal_cpu_nanocpus(tmp_path: Path) -> None:
+    valid = tmp_path / "decimal-cpus.yml"
+    valid.write_text(
+        POLICY_PATH.read_text(encoding="utf-8").replace("cpus: 2", "cpus: 1.003"),
+        encoding="utf-8",
+    )
+    assert load_execution_policy(valid)["cpus"] == 1.003
+
+
+def test_policy_preserves_yaml_merge_precedence(tmp_path: Path) -> None:
+    merged = tmp_path / "merged-policy.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace(
+        "execution:\\n",
+        'defaults: &defaults\\n  memory: "512m"\\nexecution:\\n  <<: *defaults\\n',
+        1,
+    )
+    merged.write_text(text, encoding="utf-8")
+    assert load_execution_policy(merged)["memory"] == "2g"
+
+
+def test_main_interrupt_before_container_launch_returns_130_without_cleanup(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    def interrupt_inspection(_: str) -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
+    ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", interrupt_inspection)
+    monkeypatch.setattr(
+        "code_test_lab.cli.remove_container",
+        lambda _: pytest.fail("cleanup must not run before Docker launch"),
+    )
+    assert main() == 130
+    assert capsys.readouterr().err == ""
+
+
+def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -> None:
+    workflow = yaml.load(
+        WORKFLOW_SECURITY_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
+    )
+    gitleaks_job = workflow["jobs"]["gitleaks"]
+    scan_step = next(
+        step for step in gitleaks_job["steps"]
+        if step.get("name") == "Scan all commits using trusted base-branch rules"
+    )
+    assert "TRUSTED_BASE_REF" in scan_step["env"]
+    assert "git worktree add" in scan_step["run"]
+    assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
+    assert '--config "$trusted_config"' in scan_step["run"]
+    assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
+    assert "--diff-merges=first-parent" in scan_step["run"]
+
+    zizmor_job = workflow["jobs"]["zizmor"]
+    audit = next(
+        step["run"] for step in zizmor_job["steps"]
+        if step.get("name") == "Audit workflow security"
+    )
+    assert "--no-config" in audit
+
+
+def test_readme_warns_about_untrusted_docker_build_context() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "only for a trusted checkout" in readme
+    assert "disposable builder with no proxy credentials" in readme
