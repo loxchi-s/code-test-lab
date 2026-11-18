@@ -80,7 +80,11 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         flag, value = flag_value.split(" ", maxsplit=1)
         assert docker_options.count(flag) == 1
         assert docker_options[docker_options.index(flag) + 1] == value
-    assert docker_options.count("--read-only") == 1
+    readonly_options = [
+        token for token in docker_options
+        if token == "--read-only" or token.startswith("--read-only=")
+    ]
+    assert readonly_options in (["--read-only"], ["--read-only=true"])
     assert docker_options.count("--log-driver") == 1
     assert docker_options[docker_options.index("--log-driver") + 1] == "json-file"
     log_options = [
@@ -374,7 +378,7 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     )
     jobs = workflow["jobs"]
     assert {"actionlint", "gitleaks", "zizmor"} <= set(jobs)
-    assert all(not job.get("needs") for job in jobs.values())
+    assert all(not job.get("needs") and not job.get("if") for job in jobs.values())
 
     gitleaks_steps = jobs["gitleaks"]["steps"]
     checkout = next(
@@ -386,7 +390,22 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
         step["run"] for step in gitleaks_steps
         if step.get("name") == "Scan all commits using trusted base-branch rules"
     )
-    assert "--all --full-history --diff-filter=tuxdb --diff-merges=first-parent" in scan
+    scan_lines = scan.splitlines()
+    command_start = next(
+        index for index, line in enumerate(scan_lines)
+        if line.lstrip().startswith("gitleaks git ")
+    )
+    command_lines = [scan_lines[command_start]]
+    while command_lines[-1].rstrip().endswith("\\\\"):
+        command_lines.append(scan_lines[command_start + len(command_lines)])
+    command = "\\n".join(command_lines).replace("\\\\\\n", " ")
+    command_tokens = shlex.split(command)
+    assert command_tokens[:2] == ["gitleaks", "git"]
+    assert command_tokens[2] == "$GITHUB_WORKSPACE"
+    assert (
+        '--log-opts=--all --full-history --diff-filter=uxdb --diff-merges=first-parent'
+        in command_tokens
+    )
 
     zizmor_steps = jobs["zizmor"]["steps"]
     assert any("python -I -m venv" in step.get("run", "") for step in zizmor_steps)
@@ -449,7 +468,8 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
-    assert "--diff-merges=first-parent" in scan_step["run"]
+    assert '--config "$trusted_config"' in scan
+    assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
 
     zizmor_job = workflow["jobs"]["zizmor"]
     audit = next(
@@ -457,6 +477,7 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
         if step.get("name") == "Audit workflow security"
     )
     assert "--no-config" in audit
+    assert "${{ runner.temp }}/zizmor-venv/bin/zizmor" in audit
 
 
 def test_readme_warns_about_untrusted_docker_build_context() -> None:
