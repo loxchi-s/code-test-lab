@@ -8,6 +8,8 @@ from container_execution.adapters.github_actions.runtime import GitHubActionsRun
 from container_execution.application.service import ContainerExecutionService
 from container_execution.domain.execution import ExecutionTarget
 
+_MAX_RETURNED_LOG_CHARS = 16_000
+
 mcp = FastMCP("code-test-lab-container")
 _service: ContainerExecutionService | None = None
 
@@ -21,13 +23,18 @@ def service() -> ContainerExecutionService:
 
 @mcp.tool()
 async def container_run(target: str, ref: str = "main") -> dict[str, str]:
-    """Dispatch an allowlisted test target to the code-test-lab GitHub Actions runner."""
+    """Dispatch an allowlisted test target; ref selects source code, not workflow code."""
     try:
         selected = ExecutionTarget(target)
     except ValueError as exc:
         raise ValueError("target must be one of: unit, lint, security") from exc
     request = await service().run(selected, ref)
-    return {"execution_id": request.execution_id, "status": "queued", "ref": ref}
+    return {
+        "execution_id": request.execution_id,
+        "status": "queued",
+        "source_ref": ref,
+        "workflow_ref": os.environ.get("CONTAINER_WORKFLOW_REF", "main"),
+    }
 
 
 @mcp.tool()
@@ -35,6 +42,27 @@ async def container_status(execution_id: str, ref: str = "main") -> dict[str, st
     """Get the current GitHub Actions execution status."""
     status = await service().status(execution_id, ref)
     return {"execution_id": execution_id, "status": status.value}
+
+
+@mcp.tool()
+async def container_result(execution_id: str, ref: str = "main") -> dict[str, str | int | bool]:
+    """Retrieve bounded stdout/stderr and exit code after the execution artifact is uploaded."""
+    result = await service().result(execution_id, ref)
+    if result is None:
+        return {"execution_id": execution_id, "status": "result_not_available"}
+    stdout = result.stdout[:_MAX_RETURNED_LOG_CHARS]
+    stderr = result.stderr[:_MAX_RETURNED_LOG_CHARS]
+    return {
+        "execution_id": execution_id,
+        "status": result.status.value,
+        "source_ref": result.source_ref,
+        "exit_code": result.exit_code if result.exit_code is not None else -1,
+        "stdout": stdout,
+        "stderr": stderr,
+        "stdout_truncated": len(result.stdout) > len(stdout),
+        "stderr_truncated": len(result.stderr) > len(stderr),
+        "commit_sha": result.commit_sha,
+    }
 
 
 @mcp.tool()
