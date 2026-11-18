@@ -50,6 +50,25 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     for step in container_job["steps"]:
         run = step.get("run", "")
         assert not _contains_untrusted_credential(run)
+
+    quality_run = next(
+        step["run"] for step in container_job["steps"]
+        if step.get("name") == "Run quality checks without network or credentials"
+    )
+    execution = policy["execution"]
+    expected_policy_flags = (
+        "--network none",
+        "--read-only",
+        f"--tmpfs /tmp:rw,noexec,nosuid,size={execution['tmpfs_size']}",
+        f"--memory {execution['memory']}",
+        f"--memory-swap {execution['memory']}",
+        f"--cpus {execution['cpus']}",
+        f"--pids-limit {execution['pids_limit']}",
+        f"--user {execution['user']}",
+        "--cap-drop ALL",
+        "--security-opt no-new-privileges",
+    )
+    assert all(flag in quality_run for flag in expected_policy_flags)
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
