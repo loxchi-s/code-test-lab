@@ -76,10 +76,22 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         if token.startswith("code-test-lab:")
     )
     docker_options = docker_tokens[2:image_index]
+    approved_options = {
+        "--network", "--read-only", "--tmpfs", "--memory", "--memory-swap",
+        "--cpus", "--pids-limit", "--log-driver", "--log-opt", "--env",
+        "--cap-drop", "--security-opt", "--user", "--entrypoint",
+    }
+    option_values: dict[str, list[str]] = {}
+    index = 0
+    while index < len(docker_options):
+        option = docker_options[index]
+        assert option in approved_options, f"unapproved Docker option: {option}"
+        assert index + 1 < len(docker_options), f"missing value for {option}"
+        option_values.setdefault(option, []).append(docker_options[index + 1])
+        index += 2
     for flag_value in expected_policy_flags:
         flag, value = flag_value.split(" ", maxsplit=1)
-        assert docker_options.count(flag) == 1
-        assert docker_options[docker_options.index(flag) + 1] == value
+        assert option_values.get(flag) == [value]
     readonly_options = [
         token for token in docker_options
         if token == "--read-only" or token.startswith("--read-only=")
@@ -238,8 +250,12 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Audit installed dependencies in a restricted network container"
     )
     assert build_step["id"] == "build-image"
-    assert "steps.build-image.outcome == 'success'" in audit_step["if"]
-    assert "!cancelled()" in audit_step["if"]
+    condition = audit_step["if"].strip()
+    if condition.startswith("${{") and condition.endswith("}}"):
+        condition = condition[3:-2].strip()
+    assert " ".join(condition.split()) == (
+        "!cancelled() && steps.build-image.outcome == 'success'"
+    )
     assert any("docker build" in run for run in run_steps)
     assert any("docker run" in run and "pytest" in run for run in run_steps)
     assert not any("pip install -e" in run for run in run_steps)
@@ -403,16 +419,21 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     )
     command_tokens = shlex.split(command)
     assert command_tokens[:2] == ["gitleaks", "git"]
-    assert command_tokens[2] == "$GITHUB_WORKSPACE"
+    assert command_tokens[2] == "."
+    assert 'cd "$trusted_dir"' in scan
+    assert scan_step["env"]["TRUSTED_BASE_SHA"] == (
+        "${{ github.event.pull_request.base.sha || github.sha }}"
+    )
     assert command_tokens[command_tokens.index("--config") + 1] == "$trusted_config"
     assert (
         command_tokens[command_tokens.index("--gitleaks-ignore-path") + 1]
         == "$trusted_ignore"
     )
+    assert "--ignore-gitleaks-allow" in command_tokens
     assert "--redact" in command_tokens
     assert "--no-banner" in command_tokens
     assert (
-        '--log-opts=--all --full-history --diff-filter=uxdb --diff-merges=first-parent'
+        '--log-opts=--all --full-history --diff-filter=uxdbT --diff-merges=first-parent'
         in command_tokens
     )
 
@@ -484,6 +505,8 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
         if step.get("name") == "Audit workflow security"
     )
     assert "--no-config" in audit
+    assert "--no-ignores" in audit
+    assert "--collect=all" in audit
     assert "${{ runner.temp }}/zizmor-venv/bin/zizmor" in audit
 
 
@@ -491,3 +514,32 @@ def test_readme_warns_about_untrusted_docker_build_context() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "only for a trusted checkout" in readme
     assert "disposable builder with no proxy credentials" in readme
+
+
+def test_policy_rejects_duplicate_keys_inside_yaml_merge_operands(tmp_path: Path) -> None:
+    invalid = tmp_path / "duplicate-merge.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace(
+        '  memory: "2g"',
+        '  <<: {memory: "512m", memory: "2g"}',
+        1,
+    )
+    invalid.write_text(text, encoding="utf-8")
+    with pytest.raises(PolicyError, match="duplicate key"):
+        load_execution_policy(invalid)
+
+
+def test_policy_rejects_signaling_nan_cpu_value(tmp_path: Path) -> None:
+    invalid = tmp_path / "signaling-nan.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace("cpus: 2", "cpus: sNaN")
+    invalid.write_text(text, encoding="utf-8")
+    with pytest.raises(PolicyError, match="cpus"):
+        load_execution_policy(invalid)
+
+
+def test_bare_absolute_external_import_is_not_a_local_dependency(tmp_path: Path) -> None:
+    sample = tmp_path / "external_import.py"
+    sample.write_text("import docker\\n", encoding="utf-8")
+    from code_test_lab import __path__ as package_path
+    from code_test_lab import docker as docker_module
+    assert docker_module.__name__ == "code_test_lab.docker"
+    assert package_path
