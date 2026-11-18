@@ -87,6 +87,8 @@ The GitHub Actions workflow uses an explicit, fixed Docker argument vector so it
 or execute pull-request-controlled Python code on the host before isolation. CI limits mirror the
 checked-in policy and are asserted by regression tests; update both together when changing limits.
 
+Building the local image executes the checkout's Dockerfile through the Docker builder. Do this only for a trusted checkout. Docker may populate proxy build arguments from the developer's Docker client configuration, so an untrusted Dockerfile must never run on a host with proxy credentials. For untrusted checkouts, use a disposable builder with no proxy credentials and no sensitive host mounts.
+
 Build the local image first (Docker must be available):
 
 ```bash
