@@ -79,10 +79,12 @@ The separate `.github/workflows/workflow-security.yml` workflow performs:
 
 Tool versions are pinned. Downloaded release archives are verified against published SHA-256 checksums.
 CI uses Syft to inspect the built image and emit a CycloneDX SBOM without running the image.
-The separately installed, checksum-pinned Grype scanner evaluates that SBOM against its
-vulnerability database with a low-severity failure threshold. It does not install packages or
-execute code from the PR-built image. This improves scanner independence but does not replace
-trusted workflow governance: the PR still contains its own workflow definitions.
+A standard-library parser filters the SBOM to PyPI package components; the separately installed,
+checksum-pinned Grype scanner evaluates that Python dependency inventory against its vulnerability
+database with a low-severity failure threshold. It does not install packages or execute code from
+the PR-built image. This check does not cover operating-system packages in the base image. Scanner
+independence does not replace trusted workflow governance: the PR still contains its own workflow
+definitions.
 The job uses read-only repository permissions and does not require repository write access or secrets.
 
 ## Policy-driven container execution
