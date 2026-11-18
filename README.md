@@ -39,7 +39,7 @@ the environment variables above. A hosted ChatGPT integration additionally requi
 reachable, authenticated MCP transport; a local stdio process is not automatically exposed
 to ChatGPT.
 
-## GitHub Actions permissions and dispatch prerequisite
+## GitHub Actions permissions and dispatch
 
 The token used by the MCP host needs:
 - Actions: read and write (dispatch, list runs, cancel)
@@ -48,14 +48,18 @@ The token used by the MCP host needs:
 The workflow itself uses only `contents: read`. Do not use `pull_request_target` to execute
 untrusted pull request code with privileged secrets.
 
-GitHub requires a `workflow_dispatch` workflow file to exist on the repository's default
-branch before it can be dispatched. Therefore, while this pull request remains unmerged,
-MCP-to-Actions dispatch cannot be end-to-end verified. The PR is intentionally kept open and
-unmerged; after an authorized merge, dispatch can target the selected branch/ref.
+The `workflow_dispatch` workflow is present on the default branch (`main`), so the GitHub
+default-branch prerequisite for dispatch is satisfied. The MCP host still needs a valid token
+and network access to the GitHub REST API. End-to-end dispatch and container execution must be
+verified from an authenticated MCP host; CI passing on the repository does not prove that path.
 
 ## Security boundary
 
 - Fixed workflow and allowlisted target enum; no arbitrary shell command.
+- The workflow validates `execution_id` as a 32-character lowercase hexadecimal identifier
+  before using it for metadata or artifact creation.
+- Workflow input values are passed through environment variables, not interpolated into shell
+  source.
 - GitHub Actions runner is ephemeral; no persistent daemon is implied.
 - Docker container uses no network, read-only root filesystem, non-root UID, dropped
   capabilities, no-new-privileges, PID/memory/CPU limits.
