@@ -337,17 +337,34 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert int(job["timeout-minutes"]) == 45
     run_steps = [step.get("run", "") for step in job["steps"]]
     build_step = next(step for step in job["steps"] if step.get("name") == "Build validation image")
+    sbom_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Generate SBOM from the image without executing it"
+    )
+    requirements_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Convert SBOM Python packages into pinned requirements data"
+    )
     audit_step = next(
         step for step in job["steps"]
-        if step.get("name") == "Audit installed dependencies in a restricted network container"
+        if step.get("name") == "Audit image inventory with trusted pip-audit action"
     )
     assert build_step["id"] == "build-image"
-    condition = audit_step["if"].strip()
-    if condition.startswith("${{") and condition.endswith("}}"):
-        condition = condition[3:-2].strip()
-    assert " ".join(condition.split()) == (
-        "!cancelled() && steps.build-image.outcome == 'success'"
+    assert "sha256sum --check" in next(
+        step["run"] for step in job["steps"]
+        if step.get("name") == "Install trusted Syft image scanner"
     )
+    assert "syft \"code-test-lab:${{ github.sha }}\"" in sbom_step["run"]
+    assert "cyclonedx-json=" in sbom_step["run"]
+    assert "json.load" in requirements_step["run"]
+    assert "pkg:pypi/" in requirements_step["run"]
+    assert audit_step["uses"] == (
+        "pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266"
+    )
+    assert audit_step["with"]["disable-pip"] == "true"
+    assert audit_step["with"]["no-deps"] == "true"
+    assert audit_step["with"]["inputs"] == "${{ runner.temp }}/image-requirements.txt"
+    assert not any("--entrypoint pip-audit" in run for run in run_steps)
     assert any("docker build" in run for run in run_steps)
     quality_step = next(
         step for step in job["steps"]
