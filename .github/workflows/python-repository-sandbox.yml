@@ -44,7 +44,7 @@ jobs:
             echo "::error::ref must not be empty"
             exit 2
           fi
-          metadata="$(curl --fail --silent --show-error --location \
+          metadata="$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 15 \
             "https://api.github.com/repos/$TARGET_REPOSITORY")" || {
             echo "::error::target repository must be publicly accessible"
             exit 2
