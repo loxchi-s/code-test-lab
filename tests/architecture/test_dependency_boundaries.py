@@ -19,9 +19,14 @@ FORBIDDEN_DEPENDENCIES = {
 def _local_module(module: str) -> str | None:
     """Resolve a package-qualified import to a top-level local module."""
     prefix = f"{PACKAGE_NAME}."
-    if module.startswith(prefix):
-        candidate = module[len(prefix):].split(".", maxsplit=1)[0]
-        return candidate if (PACKAGE_ROOT / f"{candidate}.py").is_file() else None
+    if not module.startswith(prefix):
+        return None
+    candidate = module[len(prefix):].split(".", maxsplit=1)[0]
+    return candidate if (PACKAGE_ROOT / f"{candidate}.py").is_file() else None
+
+
+def _local_relative_module(module: str) -> str | None:
+    """Resolve a level-one relative import inside this package."""
     candidate = module.split(".", maxsplit=1)[0]
     return candidate if (PACKAGE_ROOT / f"{candidate}.py").is_file() else None
 
@@ -35,7 +40,7 @@ def _internal_imports(path: Path) -> set[str]:
             if node.level == 0 and node.module:
                 if node.module == PACKAGE_NAME:
                     for alias in node.names:
-                        imported = _local_module(alias.name)
+                        imported = _local_relative_module(alias.name)
                         if imported:
                             imports.add(imported)
                 else:
@@ -44,12 +49,12 @@ def _internal_imports(path: Path) -> set[str]:
                         imports.add(imported)
             elif node.level == 1:
                 if node.module:
-                    imported = _local_module(node.module)
+                    imported = _local_relative_module(node.module)
                     if imported:
                         imports.add(imported)
                 else:
                     for alias in node.names:
-                        imported = _local_module(alias.name)
+                        imported = _local_relative_module(alias.name)
                         if imported:
                             imports.add(imported)
         elif isinstance(node, ast.Import):
@@ -104,7 +109,7 @@ def test_package_has_no_circular_module_dependencies() -> None:
 def test_internal_imports_detects_package_root_aliases(tmp_path: Path) -> None:
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "from code_test_lab import docker\nfrom . import cli\n",
+        "from code_test_lab import docker\nfrom . import cli\nimport docker\n",
         encoding="utf-8",
     )
     assert _internal_imports(sample) == {"docker", "cli"}
