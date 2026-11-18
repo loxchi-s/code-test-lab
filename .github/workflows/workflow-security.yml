@@ -77,7 +77,7 @@ jobs:
             --config "$trusted_config" \
             --gitleaks-ignore-path "$trusted_ignore" \
             --redact --no-banner \
-            --log-opts="--all --full-history --diff-filter=tuxdb --diff-merges=first-parent"
+            --log-opts="--all --full-history --diff-filter=uxdb --diff-merges=first-parent"
 
   zizmor:
     name: GitHub Actions security audit
