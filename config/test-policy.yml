@@ -1,0 +1,16 @@
+version: 1
+execution:
+  network: disabled
+  filesystem: read-only
+  user: "10001:10001"
+  memory: "2g"
+  cpus: 2
+  pids_limit: 256
+  timeout_minutes: 20
+  drop_capabilities: all
+  no_new_privileges: true
+ci:
+  permissions:
+    contents: read
+  allow_pull_request_target: false
+  expose_repository_secrets_to_test_container: false
