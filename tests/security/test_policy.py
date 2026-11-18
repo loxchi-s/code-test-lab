@@ -8,7 +8,7 @@ from code_test_lab.isolation import (
     PolicyError,
     _remove_container,
     build_docker_command,
-    main as isolation_main,
+    main,
     load_execution_policy,
 )
 
@@ -195,7 +195,7 @@ def test_main_cleans_up_container_after_timeout(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.isolation.subprocess.run", fake_run)
 
-    assert isolation_main() == 124
+    assert main() == 124
     assert calls[0][0][0:3] == ["docker", "run", "--rm"]
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
