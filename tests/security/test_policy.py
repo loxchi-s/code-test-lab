@@ -263,7 +263,7 @@ def test_resolve_docker_target_snapshots_default_context(monkeypatch: pytest.Mon
     monkeypatch.delenv("DOCKER_HOST", raising=False)
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
-        lambda argv, **kwargs: CompletedProcess(argv, 0, stdout="workstation\\n", stderr=""),
+        lambda argv, **kwargs: CompletedProcess(argv, 0, stdout="workstation\n", stderr=""),
     )
     assert resolve_docker_target() == DockerTarget(
         "/usr/bin/docker", ("--context", "workstation"),
@@ -284,8 +284,6 @@ def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
 
 
 def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPatch) -> None:
-    import json
-
     metadata = {"Id": IMAGE_ID, "Config": {"Volumes": {"/data": {}}}}
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
@@ -297,8 +295,6 @@ def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPat
 
 
 def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    import json
-
     metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
@@ -358,6 +354,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert "cyclonedx-json=" in sbom_step["run"]
     assert "json.load" in requirements_step["run"]
     assert "pkg:pypi/" in requirements_step["run"]
+    assert "multiple versions" in requirements_step["run"]
     assert audit_step["uses"] == (
         "pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266"
     )
@@ -719,8 +716,6 @@ def test_docker_command_overrides_image_entrypoint_and_preserves_empty_operands(
 def test_resolve_image_id_rejects_invalid_metadata_shape(
     monkeypatch: pytest.MonkeyPatch, metadata: object,
 ) -> None:
-    import json
-
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
