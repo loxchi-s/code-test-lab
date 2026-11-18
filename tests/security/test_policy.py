@@ -8,8 +8,8 @@ from code_test_lab.isolation import (
     PolicyError,
     _remove_container,
     build_docker_command,
-    main,
     load_execution_policy,
+    main,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
