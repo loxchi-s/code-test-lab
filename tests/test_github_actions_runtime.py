@@ -1,10 +1,46 @@
-from container_execution.adapters.github_actions.runtime import GitHubActionsRuntime
-from container_execution.domain.execution import ExecutionStatus
+import pytest
+
+from container_execution.adapters.github_actions.runtime import (
+    GitHubActionsError,
+    GitHubActionsRuntime,
+)
+from container_execution.domain.execution import (
+    ExecutionRequest,
+    ExecutionStatus,
+    ExecutionTarget,
+)
+
+
+def make_runtime() -> GitHubActionsRuntime:
+    return GitHubActionsRuntime("owner/repo", "test-token", "container-execute.yml")
+
+
+async def test_dispatch_sends_only_fixed_workflow_inputs(monkeypatch) -> None:
+    runtime = make_runtime()
+    captured = {}
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        captured.update(method=method, path=path, payload=payload)
+        return 204, {}
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+    request = ExecutionRequest("a" * 32, ExecutionTarget.UNIT, "main")
+
+    await runtime.dispatch(request)
+
+    assert captured == {
+        "method": "POST",
+        "path": "actions/workflows/container-execute.yml/dispatches",
+        "payload": {
+            "ref": "main",
+            "inputs": {"execution_id": "a" * 32, "target": "unit"},
+        },
+    }
 
 
 async def test_status_matches_run_name_from_display_title(monkeypatch) -> None:
     execution_id = "a" * 32
-    runtime = GitHubActionsRuntime("owner/repo", "token", "container-execute.yml")
+    runtime = make_runtime()
 
     def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
         assert method == "GET"
@@ -28,7 +64,7 @@ async def test_status_matches_run_name_from_display_title(monkeypatch) -> None:
 
 async def test_status_does_not_match_workflow_name_as_execution_id(monkeypatch) -> None:
     execution_id = "b" * 32
-    runtime = GitHubActionsRuntime("owner/repo", "token", "container-execute.yml")
+    runtime = make_runtime()
 
     def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
         return 200, {
@@ -46,3 +82,73 @@ async def test_status_does_not_match_workflow_name_as_execution_id(monkeypatch) 
     monkeypatch.setattr(runtime, "_request", fake_request)
 
     assert await runtime.status(execution_id, "main") is ExecutionStatus.QUEUED
+
+
+@pytest.mark.parametrize(
+    ("run_status", "conclusion", "expected"),
+    [
+        ("queued", None, ExecutionStatus.IN_PROGRESS),
+        ("in_progress", None, ExecutionStatus.IN_PROGRESS),
+        ("completed", "success", ExecutionStatus.COMPLETED),
+        ("completed", "cancelled", ExecutionStatus.CANCELLED),
+        ("completed", "failure", ExecutionStatus.FAILED),
+        ("completed", "timed_out", ExecutionStatus.FAILED),
+    ],
+)
+async def test_status_maps_github_run_states(
+    monkeypatch, run_status: str, conclusion: str | None, expected: ExecutionStatus
+) -> None:
+    execution_id = "c" * 32
+    runtime = make_runtime()
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        return 200, {
+            "workflow_runs": [
+                {
+                    "id": 44,
+                    "display_title": f"Container execution {execution_id}",
+                    "status": run_status,
+                    "conclusion": conclusion,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+
+    assert await runtime.status(execution_id, "main") is expected
+
+
+async def test_cancel_targets_the_correlated_run(monkeypatch) -> None:
+    runtime = make_runtime()
+    calls = []
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        calls.append((method, path, payload))
+        if method == "GET":
+            return 200, {
+                "workflow_runs": [
+                    {
+                        "id": 987,
+                        "display_title": f"Container execution {'d' * 32}",
+                    }
+                ]
+            }
+        return 202, {}
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+
+    await runtime.cancel("d" * 32, "main")
+
+    assert calls[-1] == ("POST", "actions/runs/987/cancel", None)
+
+
+async def test_cancel_fails_when_execution_does_not_exist(monkeypatch) -> None:
+    runtime = make_runtime()
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        return 200, {"workflow_runs": []}
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+
+    with pytest.raises(GitHubActionsError, match="Execution run was not found"):
+        await runtime.cancel("e" * 32, "main")
