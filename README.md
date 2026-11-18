@@ -99,9 +99,7 @@ python -m code_test_lab.isolation \
   -- python -m pytest -q
 ```
 
-The runner passes arguments directly without a shell and enforces the policy's per-command timeout.
-Ordinary unit tests and lint checks do not require Docker. The GitHub Actions job timeout is an
-outer CI safety bound. The test container receives no GitHub credentials or repository secrets.
+The runner passes arguments directly without a shell and applies the policy's per-command deadline to the Docker client. When that deadline expires, the client is stopped and the runner attempts bounded container cleanup against the same Docker daemon. If forced removal cannot be confirmed, the runner returns exit code `125`; the workload may still be running, so inspect the original Docker daemon before retrying. A confirmed cleanup returns `124` for the timeout. Ordinary unit tests and lint checks do not require Docker. The GitHub Actions job timeout is an outer CI safety bound. The test container receives no GitHub credentials or repository secrets.
 
 ## Test another GitHub repository (Python)
 
