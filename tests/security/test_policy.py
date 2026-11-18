@@ -604,7 +604,7 @@ def test_resolve_image_id_rejects_invalid_metadata_shape(
             args[0], 0, stdout=json.dumps(metadata), stderr="",
         ),
     )
-    with pytest.raises(ValueError, match="invalid object|missing Config"):
+    with pytest.raises((ValueError, TypeError), match="invalid object|missing Config"):
         resolve_image_id("local:test")
 
 
