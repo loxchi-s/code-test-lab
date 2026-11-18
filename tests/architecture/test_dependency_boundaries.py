@@ -59,6 +59,8 @@ def _internal_imports(path: Path) -> set[str]:
                         imported = _local_relative_module(alias.name)
                         if imported:
                             imports.add(imported)
+                        else:
+                            imports.add("__init__")
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 imported = _local_module(alias.name)
@@ -125,5 +127,5 @@ def test_bare_absolute_external_import_is_not_a_local_dependency(tmp_path: Path)
 
 def test_package_root_value_imports_point_to_initializer(tmp_path: Path) -> None:
     sample = tmp_path / "sample.py"
-    sample.write_text("from code_test_lab import VERSION\\n", encoding="utf-8")
+    sample.write_text("from code_test_lab import VERSION\n", encoding="utf-8")
     assert "__init__" in _internal_imports(sample)
