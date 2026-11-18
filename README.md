@@ -93,13 +93,15 @@ tests/security/            Regression tests for policy enforcement
 ## Security contract
 
 1. Treat repository code and pull-request changes as untrusted.
-2. Never expose GitHub credentials or secrets to test containers.
-3. Keep network disabled for tests unless a separately reviewed test requires it.
-4. Bound CPU, memory, process count, and execution duration.
-5. Keep the container non-root, read-only, and without Linux capabilities.
-6. Grant CI only the permissions it needs; current workflow uses `contents: read`.
-7. Do not execute untrusted pull-request code in a privileged `pull_request_target` workflow.
-8. Keep unit tests runnable without a database or network.
+2. The Docker policy is defense-in-depth for test processes, not a security boundary against a malicious PR author: the workflow and policy runner are themselves versioned in the PR and can be modified by that PR.
+3. For adversarial-contributor threat models, enforce a trusted workflow from a protected base branch or a separately governed reusable workflow, require appropriate review/approval, and keep secrets unavailable to pull-request jobs.
+4. Never expose GitHub credentials or secrets to test containers.
+5. Keep network disabled for tests unless a separately reviewed test requires it.
+6. Bound CPU, memory, swap, process count, and execution duration.
+7. Keep the container non-root, read-only, and without Linux capabilities.
+8. Grant CI only the permissions it needs; current workflow uses `contents: read`.
+9. Do not execute untrusted pull-request code in a privileged `pull_request_target` workflow.
+10. Keep unit tests runnable without a database or network.
 
 ## Status semantics
 
