@@ -63,62 +63,17 @@ jobs:
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: syft "code-test-lab:${{ github.sha }}" -o "cyclonedx-json=$RUNNER_TEMP/image-sbom.json"
 
-      - name: Convert SBOM Python packages into pinned requirements data
-        id: image-requirements
+      - name: Install trusted Grype vulnerability scanner
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/anchore/grype/releases/download/v0.122.0/grype_0.122.0_linux_amd64.tar.gz \
+            --output grype.tar.gz
+          echo "e697e6f7224637df87e267e4318cc027feae99a8e1b80280241d32b9ee5d4920  grype.tar.gz" \
+            | sha256sum --check
+          tar -xzf grype.tar.gz grype
+          sudo install grype /usr/local/bin/grype
+
+      - name: Scan image SBOM with trusted Grype
         if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
-        run: |
-          python - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/image-requirements.txt" <<'PY'
-          import json
-          import re
-          import sys
-
-          source, destination = sys.argv[1:]
-          with open(source, encoding="utf-8") as stream:
-              sbom = json.load(stream)
-
-          components = sbom.get("components")
-          if not isinstance(components, list):
-              raise SystemExit("SBOM has no valid components list")
-
-          packages = {}
-          for component in components:
-              if not isinstance(component, dict):
-                  continue
-              purl = component.get("purl")
-              if not isinstance(purl, str) or not purl.startswith("pkg:pypi/"):
-                  continue
-              name = component.get("name")
-              version = component.get("version")
-              if (
-                  not isinstance(name, str)
-                  or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", name)
-                  or not isinstance(version, str)
-                  or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+!_-]{0,99}", version)
-              ):
-                  raise SystemExit("SBOM contains an invalid Python package identity")
-              key = name.casefold()
-              previous = packages.get(key)
-              if previous is not None and previous[1] != version:
-                  raise SystemExit(f"SBOM reports multiple versions of {name}")
-              packages[key] = (name, version)
-
-          if not packages:
-              raise SystemExit("SBOM contains no auditable PyPI packages")
-
-          with open(destination, "w", encoding="utf-8") as stream:
-              for name, version in sorted(packages.values(), key=lambda item: item[0].casefold()):
-                  stream.write(f"{name}=={version}\n")
-          PY
-
-      - name: Create isolated trusted pip-audit environment
-        if: ${{ !cancelled() && steps.image-requirements.outcome == 'success' }}
-        run: |
-          python -I -m venv "$RUNNER_TEMP/pip-audit-venv"
-          "$RUNNER_TEMP/pip-audit-venv/bin/python" -I -m pip install \
-            --disable-pip-version-check 'pip-audit==2.10.1'
-
-      - name: Audit image inventory with trusted pip-audit
-        if: ${{ !cancelled() && steps.image-requirements.outcome == 'success' }}
-        run: |
-          "$RUNNER_TEMP/pip-audit-venv/bin/pip-audit" \
-            --no-deps --requirement "$RUNNER_TEMP/image-requirements.txt"
+        run: grype "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
