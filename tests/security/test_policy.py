@@ -421,6 +421,13 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     job = workflow["jobs"]["quality"]
     assert int(job["timeout-minutes"]) == 45
     run_steps = [step.get("run", "") for step in job["steps"]]
+    pid_preflight_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Verify Docker daemon PID limit support"
+    )
+    assert pid_preflight_step["timeout-minutes"] == "2"
+    assert "docker info --format '{{json .Warnings}}'" in pid_preflight_step["run"]
+    assert 'test("pids limit"; "i")' in pid_preflight_step["run"]
     build_step = next(step for step in job["steps"] if step.get("name") == "Build validation image")
     sbom_step = next(
         step for step in job["steps"]
