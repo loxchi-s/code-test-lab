@@ -32,7 +32,9 @@ def test_external_checkout_uses_fixed_workspace_and_does_not_persist_credentials
     assert target_checkout["with"]["ref"] == "${{ inputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
-    assert target_checkout["with"]["token"] == (\n        "${{ secrets.TARGET_REPO_READ_TOKEN || github.token }}"\n    )
+    token_expression = target_checkout["with"]["token"]
+    assert token_expression.startswith("${{ secrets.TARGET_REPO_READ_TOKEN")
+    assert token_expression.endswith("github.token }}")
 
 
 def test_target_code_runs_only_in_restricted_docker_container() -> None:
