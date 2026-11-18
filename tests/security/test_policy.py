@@ -12,6 +12,7 @@ from code_test_lab.policy import PolicyError, load_execution_policy
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "config/test-policy.yml"
 WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
+WORKFLOW_SECURITY_PATH = ROOT / ".github/workflows/workflow-security.yml"
 TEST_CONTAINER_NAME = "code-test-lab-" + "a" * 32
 IMAGE_ID = "sha256:" + "a" * 64
 
@@ -48,8 +49,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
 
     container_job = workflow["jobs"]["quality"]
     for step in container_job["steps"]:
-        run = step.get("run", "")
-        assert not _contains_untrusted_credential(run)
+        assert not _contains_untrusted_credential(yaml.dump(step))
 
     quality_run = next(
         step["run"] for step in container_job["steps"]
@@ -68,7 +68,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
     )
-    assert all(flag in quality_run for flag in expected_policy_flags)
+    assert all(quality_run.count(flag) == 1 for flag in expected_policy_flags)
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
@@ -326,3 +326,32 @@ def test_workflow_credential_guard_detects_bracket_and_dot_contexts() -> None:
     assert _contains_untrusted_credential("${{ secrets.TOKEN }}")
     assert _contains_untrusted_credential("${{ github.token }}")
     assert not _contains_untrusted_credential("${{ github.sha }}")
+
+
+def test_workflow_security_scans_are_independent_and_cover_merge_history() -> None:
+    workflow = yaml.load(
+        WORKFLOW_SECURITY_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
+    )
+    jobs = workflow["jobs"]
+    assert {"actionlint", "gitleaks", "zizmor"} <= set(jobs)
+    assert all(not job.get("needs") for job in jobs.values())
+
+    gitleaks_steps = jobs["gitleaks"]["steps"]
+    checkout = next(
+        step for step in gitleaks_steps
+        if step.get("uses", "").startswith("actions/checkout")
+    )
+    assert checkout["with"]["fetch-depth"] == "0"
+    scan = next(
+        step["run"] for step in gitleaks_steps
+        if step.get("name") == "Scan all commits including merge patches"
+    )
+    assert "--all --full-history --diff-filter=tuxdb --diff-merges=first-parent" in scan
+
+    zizmor_steps = jobs["zizmor"]["steps"]
+    assert any("python -I -m venv" in step.get("run", "") for step in zizmor_steps)
+    assert any(
+        "/zizmor-venv/bin/python -I -m pip" in step.get("run", "")
+        for step in zizmor_steps
+    )
