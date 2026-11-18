@@ -33,9 +33,15 @@ def _internal_imports(path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.level == 0 and node.module:
-                imported = _local_module(node.module)
-                if imported:
-                    imports.add(imported)
+                if node.module == PACKAGE_NAME:
+                    for alias in node.names:
+                        imported = _local_module(alias.name)
+                        if imported:
+                            imports.add(imported)
+                else:
+                    imported = _local_module(node.module)
+                    if imported:
+                        imports.add(imported)
             elif node.level == 1:
                 if node.module:
                     imported = _local_module(node.module)
@@ -92,3 +98,13 @@ def test_package_has_no_circular_module_dependencies() -> None:
 
     for module in sorted(graph):
         visit(module, ())
+
+
+
+def test_internal_imports_detects_package_root_aliases(tmp_path: Path) -> None:
+    sample = tmp_path / "sample.py"
+    sample.write_text(
+        "from code_test_lab import docker\nfrom . import cli\n",
+        encoding="utf-8",
+    )
+    assert _internal_imports(sample) == {"docker", "cli"}
