@@ -606,3 +606,16 @@ def test_resolve_image_id_rejects_invalid_metadata_shape(
     )
     with pytest.raises(ValueError, match="invalid object|missing Config"):
         resolve_image_id("local:test")
+
+
+
+def test_policy_rejects_repeated_yaml_merge_keys(tmp_path: Path) -> None:
+    invalid = tmp_path / "duplicate-merge-key.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace(
+        "execution:\n",
+        "execution:\n  <<: {memory: \"512m\"}\n  <<: {tmpfs_size: \"128m\"}\n",
+        1,
+    )
+    invalid.write_text(text, encoding="utf-8")
+    with pytest.raises(PolicyError, match="duplicate merge key"):
+        load_execution_policy(invalid)
