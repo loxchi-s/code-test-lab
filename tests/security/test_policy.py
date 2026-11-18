@@ -14,34 +14,65 @@ WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 TEST_CONTAINER_NAME = "code-test-lab-" + "a" * 32
 
 
-def test_ci_permissions_are_read_only() -> None:
-    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+def _workflow() -> dict:
+    # BaseLoader preserves GitHub's unquoted "on" key as a string.
+    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
+    workflow = _workflow()
     policy = yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8"))
-    assert "permissions:\n  contents: read" in workflow
-    assert "pull_request_target:" not in workflow
-    assert "secrets." not in workflow
+    assert workflow["permissions"] == {"contents": "read"}
+    for job in workflow["jobs"].values():
+        permissions = job.get("permissions")
+        assert permissions is None or permissions == {"contents": "read"}
+
+    events = workflow["on"]
+    if isinstance(events, str):
+        event_names = {events}
+    elif isinstance(events, list):
+        event_names = set(events)
+    else:
+        event_names = set(events)
+    assert "pull_request_target" not in event_names
+
+    container_job = workflow["jobs"]["quality"]
+    for step in container_job["steps"]:
+        run = step.get("run", "")
+        assert not __import__("re").search(
+            r"\$\{\{[^}]*\b(?:secrets(?:\s*\[)|secrets\.|github\.token)\b",
+            run,
+            flags=__import__("re").IGNORECASE,
+        )
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
 
 
-def test_policy_generates_the_restricted_docker_argv() -> None:
+def test_policy_generates_exact_restricted_docker_argv() -> None:
     execution = load_execution_policy(POLICY_PATH)
     argv = build_docker_command(
         "code-test-lab:test", ["python", "-m", "pytest", "-q"], execution,
         container_name=TEST_CONTAINER_NAME,
     )
-    expected = [
-        "--name", TEST_CONTAINER_NAME, "--network", "none", "--read-only",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
-        "--memory", "2g", "--memory-swap", "2g", "--cpus", "2",
-        "--pids-limit", "256", "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges", "--user", "10001:10001",
-    ]
-    for flag in expected:
-        assert flag in argv
+    expected_pairs = {
+        "--name": TEST_CONTAINER_NAME,
+        "--network": "none",
+        "--tmpfs": "/tmp:rw,noexec,nosuid,size=256m",
+        "--memory": "2g",
+        "--memory-swap": "2g",
+        "--cpus": "2",
+        "--pids-limit": "256",
+        "--cap-drop": "ALL",
+        "--security-opt": "no-new-privileges",
+        "--user": "10001:10001",
+    }
+    for flag, value in expected_pairs.items():
+        assert argv.count(flag) == 1
+        assert argv[argv.index(flag) + 1] == value
     assert argv[-4:] == ["python", "-m", "pytest", "-q"]
-    assert argv.count("docker") == 1
+    assert argv.count("--read-only") == 1
+    assert argv.count("--network") == 1
 
 
 def test_container_command_is_passed_as_distinct_argv_items() -> None:
@@ -52,6 +83,15 @@ def test_container_command_is_passed_as_distinct_argv_items() -> None:
         container_name=TEST_CONTAINER_NAME,
     )
     assert argv[-3:] == ["python", "-c", marker]
+
+
+def test_container_command_allows_empty_non_executable_operands() -> None:
+    execution = load_execution_policy(POLICY_PATH)
+    argv = build_docker_command(
+        "code-test-lab:test", ["printf", "%s", ""], execution,
+        container_name=TEST_CONTAINER_NAME,
+    )
+    assert argv[-3:] == ["printf", "%s", ""]
 
 
 def test_image_reference_rejects_option_injection() -> None:
@@ -91,19 +131,18 @@ def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPat
 
 
 def test_timeout_cleanup_reports_missing_docker(monkeypatch: pytest.MonkeyPatch) -> None:
-    def missing_docker(*args: object, **kwargs: object) -> None:
-        raise FileNotFoundError("docker")
-
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: None)
-    monkeypatch.setattr("code_test_lab.docker.subprocess.run", missing_docker)
     assert remove_container(TEST_CONTAINER_NAME) is False
 
 
-def test_workflow_delegates_docker_execution_to_policy_runner() -> None:
-    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert workflow.count("python -m code_test_lab.isolation") == 2
-    assert "docker run" not in workflow
-    assert "timeout-minutes: 45" in workflow
+def test_workflow_runs_quality_inside_the_isolated_container() -> None:
+    workflow = _workflow()
+    job = workflow["jobs"]["quality"]
+    assert int(job["timeout-minutes"]) == 45
+    run_steps = [step.get("run", "") for step in job["steps"]]
+    assert any("docker build" in run for run in run_steps)
+    assert any("docker run" in run for run in run_steps)
+    assert not any("pip install -e" in run for run in run_steps)
 
 
 def test_container_timeout_is_derived_from_policy() -> None:
@@ -116,10 +155,13 @@ def test_container_timeout_is_derived_from_policy() -> None:
         ("network: disabled", "network: enabled", "network: disabled"),
         ('user: "10001:10001"', 'user: "0:0"', "non-root"),
         ('memory: "2g"', 'memory: "999g"', "memory"),
+        ('memory: "2g"', 'memory: "1m"', "memory"),
         ('tmpfs_size: "256m"', 'tmpfs_size: "9999m"', "tmpfs_size"),
         ("cpus: 2", "cpus: 999", "cpus"),
+        ("cpus: 2", "cpus: 0.1234567891", "NanoCPUs"),
         ("pids_limit: 256", "pids_limit: 99999", "pids_limit"),
         ("timeout_minutes: 20", "timeout_minutes: 21", "timeout_minutes"),
+        ('user: "10001:10001"', 'user: "١٠٠٠١:10001"', "ASCII"),
     ],
 )
 def test_policy_rejects_unsafe_execution_limits(
@@ -130,6 +172,16 @@ def test_policy_rejects_unsafe_execution_limits(
     assert old in policy_text
     invalid.write_text(policy_text.replace(old, new), encoding="utf-8")
     with pytest.raises(PolicyError, match=message):
+        load_execution_policy(invalid)
+
+
+def test_policy_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
+    invalid = tmp_path / "duplicate.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace(
+        '  memory: "2g"', '  memory: "512m"\n  memory: "2g"',
+    )
+    invalid.write_text(text, encoding="utf-8")
+    with pytest.raises(PolicyError, match="duplicate key"):
         load_execution_policy(invalid)
 
 
@@ -146,7 +198,9 @@ def test_policy_rejects_repository_secret_exposure(tmp_path: Path) -> None:
         load_execution_policy(invalid)
 
 
-def test_main_cleans_up_container_after_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
@@ -164,5 +218,6 @@ def test_main_cleans_up_container_after_timeout(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     assert main() == 124
     assert calls[0][0][0:3] == ["docker", "run", "--rm"]
+    assert calls[0][1]["timeout"] == 1200
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
