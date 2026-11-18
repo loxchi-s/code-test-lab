@@ -384,7 +384,7 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     assert checkout["with"]["fetch-depth"] == "0"
     scan = next(
         step["run"] for step in gitleaks_steps
-        if step.get("name") == "Scan all commits including merge patches"
+        if step.get("name") == "Scan all commits using trusted base-branch rules"
     )
     assert "--all --full-history --diff-filter=tuxdb --diff-merges=first-parent" in scan
 
@@ -408,8 +408,8 @@ def test_policy_accepts_exact_decimal_cpu_nanocpus(tmp_path: Path) -> None:
 def test_policy_preserves_yaml_merge_precedence(tmp_path: Path) -> None:
     merged = tmp_path / "merged-policy.yml"
     text = POLICY_PATH.read_text(encoding="utf-8").replace(
-        "execution:\\n",
-        'defaults: &defaults\\n  memory: "512m"\\nexecution:\\n  <<: *defaults\\n',
+        "execution:\n",
+        'defaults: &defaults\n  memory: "512m"\nexecution:\n  <<: *defaults\n',
         1,
     )
     merged.write_text(text, encoding="utf-8")
