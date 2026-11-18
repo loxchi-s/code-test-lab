@@ -48,9 +48,9 @@ uv sync --extra dev
 ## Checks
 
 ```bash
-./scripts/test.sh
-./scripts/lint.sh
-./scripts/security.sh
+sh scripts/test.sh
+sh scripts/lint.sh
+sh scripts/security.sh
 ```
 
 Individual commands:
