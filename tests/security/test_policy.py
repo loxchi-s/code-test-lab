@@ -4,13 +4,9 @@ from subprocess import CompletedProcess, TimeoutExpired
 import pytest
 import yaml
 
-from code_test_lab.isolation import (
-    PolicyError,
-    _remove_container,
-    build_docker_command,
-    load_execution_policy,
-    main,
-)
+from code_test_lab.cli import main
+from code_test_lab.docker import build_docker_command, remove_container
+from code_test_lab.policy import PolicyError, load_execution_policy
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "config/test-policy.yml"
@@ -103,10 +99,10 @@ def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPat
         captured["kwargs"] = kwargs
         return CompletedProcess(argv, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: "/usr/bin/docker")
-    monkeypatch.setattr("code_test_lab.isolation.subprocess.run", fake_run)
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
 
-    assert _remove_container(TEST_CONTAINER_NAME) is True
+    assert remove_container(TEST_CONTAINER_NAME) is True
     assert captured["argv"] == ["/usr/bin/docker", "rm", "--force", TEST_CONTAINER_NAME]
     assert captured["kwargs"] == {
         "check": False,
@@ -121,10 +117,10 @@ def test_timeout_cleanup_reports_missing_docker(monkeypatch: pytest.MonkeyPatch)
     def missing_docker(*args: object, **kwargs: object) -> None:
         raise FileNotFoundError("docker")
 
-    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: None)
-    monkeypatch.setattr("code_test_lab.isolation.subprocess.run", missing_docker)
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: None)
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", missing_docker)
 
-    assert _remove_container(TEST_CONTAINER_NAME) is False
+    assert remove_container(TEST_CONTAINER_NAME) is False
 
 
 def test_workflow_delegates_docker_execution_to_policy_runner() -> None:
@@ -192,8 +188,9 @@ def test_main_cleans_up_container_after_timeout(monkeypatch: pytest.MonkeyPatch)
         "--image", "code-test-lab:test",
         "--", "python", "-m", "pytest",
     ])
-    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: "/usr/bin/docker")
-    monkeypatch.setattr("code_test_lab.isolation.subprocess.run", fake_run)
+    monkeypatch.setattr("code_test_lab.cli.subprocess.run", fake_run)
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
 
     assert main() == 124
     assert calls[0][0][0:3] == ["docker", "run", "--rm"]
