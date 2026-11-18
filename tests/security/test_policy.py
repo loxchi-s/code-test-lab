@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
@@ -18,6 +19,14 @@ IMAGE_ID = "sha256:" + "a" * 64
 def _workflow() -> dict:
     # BaseLoader preserves GitHub's unquoted "on" key as a string.
     return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def _contains_untrusted_credential(expression: str) -> bool:
+    return bool(re.search(
+        r"\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\.token\b)",
+        expression,
+        flags=re.IGNORECASE,
+    ))
 
 
 def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
@@ -40,11 +49,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     container_job = workflow["jobs"]["quality"]
     for step in container_job["steps"]:
         run = step.get("run", "")
-        assert not __import__("re").search(
-            r"\$\{\{[^}]*\b(?:secrets(?:\s*\[)|secrets\.|github\.token)\b",
-            run,
-            flags=__import__("re").IGNORECASE,
-        )
+        assert not _contains_untrusted_credential(run)
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
@@ -288,3 +293,10 @@ def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name: calls.append(name) or True)
     assert main() == 130
     assert len(calls) == 1
+
+
+def test_workflow_credential_guard_detects_bracket_and_dot_contexts() -> None:
+    assert _contains_untrusted_credential("${{ secrets['TOKEN'] }}")
+    assert _contains_untrusted_credential("${{ secrets.TOKEN }}")
+    assert _contains_untrusted_credential("${{ github.token }}")
+    assert not _contains_untrusted_credential("${{ github.sha }}")
