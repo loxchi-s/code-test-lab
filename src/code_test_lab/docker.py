@@ -36,10 +36,10 @@ def resolve_image_id(image: str) -> str:
     except json.JSONDecodeError as exc:
         raise ValueError("Docker image inspection returned invalid metadata") from exc
     if not isinstance(metadata, dict):
-        raise TypeError("Docker image inspection returned an invalid object")
+        raise ValueError("Docker image inspection returned an invalid object")
     config = metadata.get("Config")
     if not isinstance(config, dict):
-        raise TypeError("Docker image metadata is missing Config")
+        raise ValueError("Docker image metadata is missing Config")
     volumes = config.get("Volumes")
     if volumes:
         raise ValueError("Docker images declaring volumes are not permitted")
@@ -85,8 +85,9 @@ def build_docker_command(
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", str(execution["user"]),
+        "--entrypoint", command[0],
         image,
-        *command,
+        *command.slice(1),
     ]
 
 
