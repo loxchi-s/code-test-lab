@@ -4,8 +4,8 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
-from container_execution.application.service import ContainerExecutionService
 from container_execution.adapters.github_actions.runtime import GitHubActionsRuntime
+from container_execution.application.service import ContainerExecutionService
 from container_execution.domain.execution import ExecutionTarget
 
 mcp = FastMCP("code-test-lab-container")
