@@ -37,7 +37,10 @@ def test_execution_result_accepts_valid_output() -> None:
     assert result.source_ref == "feature/test"
 
 
-@pytest.mark.parametrize("exit_code", [True, -1, 256, "0"])
-def test_execution_result_rejects_invalid_exit_code(exit_code) -> None:
-    with pytest.raises(ValueError, match="exit_code"):
+@pytest.mark.parametrize(
+    ("exit_code", "error"),
+    [(True, TypeError), (-1, ValueError), (256, ValueError), ("0", TypeError)],
+)
+def test_execution_result_rejects_invalid_exit_code(exit_code, error) -> None:
+    with pytest.raises(error, match="exit_code"):
         ExecutionResult("b" * 32, ExecutionStatus.FAILED, "main", exit_code=exit_code)
