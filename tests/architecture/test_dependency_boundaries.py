@@ -43,7 +43,7 @@ def _internal_imports(path: Path) -> set[str]:
                         imported = _local_relative_module(alias.name)
                         if imported:
                             imports.add(imported)
-                        elif alias.name not in {"*"}:
+                        else:
                             imports.add("__init__")
                 else:
                     imported = _local_module(node.module)
@@ -129,3 +129,10 @@ def test_package_root_value_imports_point_to_initializer(tmp_path: Path) -> None
     sample = tmp_path / "sample.py"
     sample.write_text("from code_test_lab import VERSION\n", encoding="utf-8")
     assert "__init__" in _internal_imports(sample)
+
+
+
+def test_absolute_package_root_wildcard_import_points_to_initializer(tmp_path: Path) -> None:
+    sample = tmp_path / "wildcard_import.py"
+    sample.write_text("from code_test_lab import *\n", encoding="utf-8")
+    assert _internal_imports(sample) == {"__init__"}
