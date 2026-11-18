@@ -68,6 +68,38 @@ jobs:
             "code-test-lab:${{ github.sha }}" \
             -o "cyclonedx-json=$RUNNER_TEMP/image-sbom.json"
 
+      - name: Filter SBOM to PyPI packages using trusted parser
+        id: python-sbom
+        if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
+        run: |
+          python - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json" <<'PY'
+          import json
+          import sys
+
+          source, destination = sys.argv[1:]
+          with open(source, encoding="utf-8") as stream:
+              sbom = json.load(stream)
+
+          components = sbom.get("components")
+          if not isinstance(components, list):
+              raise SystemExit("SBOM has no valid components list")
+
+          python_components = [
+              component
+              for component in components
+              if isinstance(component, dict)
+              and isinstance(component.get("purl"), str)
+              and component["purl"].startswith("pkg:pypi/")
+          ]
+          if not python_components:
+              raise SystemExit("SBOM contains no PyPI package components")
+
+          sbom["components"] = python_components
+          sbom.pop("dependencies", None)
+          with open(destination, "w", encoding="utf-8") as stream:
+              json.dump(sbom, stream)
+          PY
+
       - name: Install trusted Grype vulnerability scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
@@ -80,9 +112,9 @@ jobs:
           sudo install grype /usr/local/bin/grype
 
       - name: Scan image SBOM with trusted Grype
-        if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.python-sbom.outcome == 'success' }}
         run: |
           printf '{}' > "$RUNNER_TEMP/grype-empty.yaml"
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-empty.yaml" \
-            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
+            "sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low
