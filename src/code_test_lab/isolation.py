@@ -23,14 +23,33 @@ _REQUIRED_EXECUTION_KEYS = {
     "drop_capabilities",
     "no_new_privileges",
 }
+_MAX_MEMORY_MIB = 4096
+_MAX_TMPFS_MIB = 512
+_MAX_CPUS = 4
+_MAX_PIDS = 512
+_MAX_TIMEOUT_MINUTES = 20
+_MAX_UID_GID = 65535
 
 
 class PolicyError(ValueError):
     """Raised when the isolation policy is invalid or unsafe."""
 
 
+def _size_in_mib(value: object, *, key: str, maximum: int) -> int:
+    """Parse a positive Docker size and enforce its upper bound."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d+[mMgG]", value):
+        raise PolicyError(f"Execution setting {key!r} must be a positive MiB/GiB size")
+
+    amount = int(value[:-1])
+    multiplier = 1024 if value[-1].lower() == "g" else 1
+    size_mib = amount * multiplier
+    if size_mib <= 0 or size_mib > maximum:
+        raise PolicyError(f"Execution setting {key!r} exceeds the allowed limit")
+    return size_mib
+
+
 def load_execution_policy(path: Path) -> dict[str, Any]:
-    """Load and validate the execution policy without side effects."""
+    """Load and validate the policy without executing external commands."""
     try:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -55,32 +74,32 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Only network: disabled is permitted")
     if execution["filesystem"] != "read-only":
         raise PolicyError("Only filesystem: read-only is permitted")
-    if not isinstance(execution["user"], str) or not re.fullmatch(
-        r"\d+:\d+", execution["user"]
-    ):
-        raise PolicyError("Execution user must be a numeric UID:GID pair")
 
-    for key in ("memory", "tmpfs_size"):
-        value = execution[key]
-        if (
-            not isinstance(value, str)
-            or not re.fullmatch(r"\d+[mMgG]", value)
-            or int(value[:-1]) <= 0
-        ):
-            raise PolicyError(f"Execution setting {key!r} must be a positive size")
+    user = execution["user"]
+    if not isinstance(user, str) or not re.fullmatch(r"\d+:\d+", user):
+        raise PolicyError("Execution user must be a numeric UID:GID pair")
+    uid, gid = (int(part) for part in user.split(":"))
+    if not 1 <= uid <= _MAX_UID_GID or not 1 <= gid <= _MAX_UID_GID:
+        raise PolicyError("Execution UID and GID must be non-root values in range 1..65535")
+
+    _size_in_mib(execution["memory"], key="memory", maximum=_MAX_MEMORY_MIB)
+    _size_in_mib(execution["tmpfs_size"], key="tmpfs_size", maximum=_MAX_TMPFS_MIB)
 
     cpus = execution["cpus"]
     if (
         isinstance(cpus, bool)
         or not isinstance(cpus, (int, float))
-        or not 0 < cpus < float("inf")
+        or not 0 < cpus <= _MAX_CPUS
     ):
-        raise PolicyError("Execution setting 'cpus' must be a finite positive number")
+        raise PolicyError(f"Execution setting 'cpus' must be in range (0, {_MAX_CPUS}]")
 
-    for key in ("pids_limit", "timeout_minutes"):
+    for key, maximum in (
+        ("pids_limit", _MAX_PIDS),
+        ("timeout_minutes", _MAX_TIMEOUT_MINUTES),
+    ):
         value = execution[key]
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise PolicyError(f"Execution setting {key!r} must be a positive integer")
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= maximum:
+            raise PolicyError(f"Execution setting {key!r} must be in range 1..{maximum}")
 
     if execution["drop_capabilities"] != "all":
         raise PolicyError("All Linux capabilities must be dropped")
@@ -103,7 +122,7 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
 def build_docker_command(
     image: str, command: list[str], execution: dict[str, Any]
 ) -> list[str]:
-    """Build an argv vector; never interpolate commands through a shell."""
+    """Build a Docker argv vector; never interpolate commands through a shell."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
         raise ValueError("Docker image reference contains unsupported characters")
     if not command or any(not item for item in command):
@@ -156,6 +175,9 @@ def main() -> int:
         return completed.returncode
     except PolicyError as exc:
         print(f"Isolation policy error: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
         print(
