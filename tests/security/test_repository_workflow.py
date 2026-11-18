@@ -91,11 +91,7 @@ def test_repository_validation_rejects_private_and_blank_refs(
         "TARGET_REPOSITORY": "owner/public-repo",
         "TARGET_REF": "main",
     })
-    wrapper = (
-        'curl() { printf \\'{"visibility":"%s"}\\' "$TEST_VISIBILITY"; }; '
-        'jq() { printf \\'%s\\\\n\\' "$TEST_VISIBILITY"; }; '
-        'eval "$VALIDATE_SCRIPT"'
-    )
+    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
 
     def run_validation(visibility: str, ref: str = "main") -> subprocess.CompletedProcess[str]:
         env = base_env | {
