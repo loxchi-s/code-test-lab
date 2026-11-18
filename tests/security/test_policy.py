@@ -470,8 +470,6 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
-    assert '--config "$trusted_config"' in scan_step["run"]
-    assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
 
     zizmor_job = workflow["jobs"]["zizmor"]
     audit = next(
