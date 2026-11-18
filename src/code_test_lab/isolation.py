@@ -1,4 +1,4 @@
-""""Load the repository isolation policy and execute Docker commands from it."""
+"""Load the repository isolation policy and execute Docker commands from it."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class PolicyError(ValueError):
 
 def _size_in_mib(value: object, *, key: str, maximum: int) -> int:
     """Parse a positive Docker size and enforce its upper bound."""
-    if not isinstance(value, str) or not re.fullmatch(r"\\d+[mMgG]", value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d+[mMgG]", value):
         raise PolicyError(f"Execution setting {key!r} must be a positive MiB/GiB size")
 
     amount = int(value[:-1])
@@ -78,7 +78,7 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Only filesystem: read-only is permitted")
 
     user = execution["user"]
-    if not isinstance(user, str) or not re.fullmatch(r"\\d+:\\d+", user):
+    if not isinstance(user, str) or not re.fullmatch(r"\d+:\d+", user):
         raise PolicyError("Execution user must be a numeric UID:GID pair")
     uid, gid = (int(part) for part in user.split(":"))
     if not 1 <= uid <= _MAX_UID_GID or not 1 <= gid <= _MAX_UID_GID:
@@ -170,7 +170,7 @@ def build_docker_command(
 def _remove_container(container_name: str) -> bool:
     """Best-effort cleanup for a container whose Docker client timed out."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - fixed Docker cleanup argv, no shell.
             ["docker", "rm", "--force", container_name],
             check=False,
             shell=False,
