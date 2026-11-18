@@ -113,6 +113,8 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
 
     assert run_step["timeout-minutes"] == "20"
     assert "trap restore_workflow_commands EXIT" in run_step["run"]
+    assert "local exit_code=$?" in run_step["run"]
+    assert 'exit "$exit_code"' in run_step["run"]
     assert "stop-commands" in run_step["run"]
     assert "printf '::%s::\\n' \"$marker\"" in run_step["run"]
 
