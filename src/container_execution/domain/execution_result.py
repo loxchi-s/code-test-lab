@@ -2,37 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import StrEnum
 
+from container_execution.domain.execution import ExecutionStatus
 
-class ExecutionTarget(StrEnum):
-    UNIT = "unit"
-    LINT = "lint"
-    SECURITY = "security"
-
-
-class ExecutionStatus(StrEnum):
-    QUEUED = "queued"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    UNKNOWN = "unknown"
-
-
-@dataclass(frozen=True, slots=True)
-class ExecutionRequest:
-    execution_id: str
-    target: ExecutionTarget
-    ref: str
-
-    def __post_init__(self) -> None:
-        if not re.fullmatch(r"[a-f0-9]{32}", self.execution_id):
-            raise ValueError("execution_id must be a 32-character lowercase hex UUID")
-        if not re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", self.ref):
-            raise ValueError("ref contains unsupported characters")
-        if self.ref.startswith("-") or ".." in self.ref or self.ref.endswith("/"):
-            raise ValueError("ref is not a valid safe Git ref")
+_REF_PATTERN = re.compile(r"[A-Za-z0-9._/-]{1,128}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,13 +19,27 @@ class ExecutionResult:
     commit_sha: str = ""
 
     def __post_init__(self) -> None:
-        if not re.fullmatch(r"[a-f0-9]{32}", self.execution_id):
+        if not isinstance(self.execution_id, str) or not re.fullmatch(
+            r"[a-f0-9]{32}", self.execution_id
+        ):
             raise ValueError("execution_id must be a 32-character lowercase hex UUID")
-        if not self.source_ref or len(self.source_ref) > 128:
-            raise ValueError("source_ref must contain 1 to 128 characters")
+        if not isinstance(self.status, ExecutionStatus):
+            raise ValueError("status must be an ExecutionStatus")
+        if (
+            not isinstance(self.source_ref, str)
+            or not _REF_PATTERN.fullmatch(self.source_ref)
+            or self.source_ref.startswith("-")
+            or ".." in self.source_ref
+            or self.source_ref.endswith("/")
+        ):
+            raise ValueError("source_ref is not a valid safe Git ref")
         if self.exit_code is not None and (
             isinstance(self.exit_code, bool)
             or not isinstance(self.exit_code, int)
             or not 0 <= self.exit_code <= 255
         ):
             raise ValueError("exit_code must be an integer between 0 and 255")
+        if not isinstance(self.stdout, str) or not isinstance(self.stderr, str):
+            raise ValueError("stdout and stderr must be strings")
+        if self.commit_sha and not re.fullmatch(r"[a-f0-9]{40}", self.commit_sha):
+            raise ValueError("commit_sha must be a 40-character lowercase hexadecimal SHA")
