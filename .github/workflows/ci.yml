@@ -25,17 +25,18 @@ jobs:
         id: build-image
         run: docker build --pull --tag code-test-lab:${{ github.sha }} .
 
-      - name: Verify Docker daemon PID limit support
+      - name: Verify Docker daemon resource-limit support
+        id: docker-capabilities
         if: ${{ steps.build-image.outcome == 'success' }}
         timeout-minutes: 2
         run: |
-          warnings="$(docker info --format '{{json .Warnings}}')"
-          if ! jq -e '(. == null) or (type == "array")' <<< "$warnings" >/dev/null; then
-            echo "::error::Docker daemon returned invalid capability warnings"
+          info="$(docker info --format '{{json .}}')"
+          if ! jq -e 'type == "object" and .PidsLimit == true and .MemoryLimit == true and .SwapLimit == true' <<< "$info" >/dev/null; then
+            echo "::error::Docker daemon must positively report PID, memory, and swap limit support"
             exit 2
           fi
-          if jq -e 'type == "array" and any(.[]; test("pids limit"; "i"))' <<< "$warnings" >/dev/null; then
-            echo "::error::Docker daemon does not support PID limits"
+          if jq -e '(.Warnings // []) | any(.[]; test("pids limit"; "i"))' <<< "$info" >/dev/null; then
+            echo "::error::Docker daemon reports that PID limits are unsupported"
             exit 2
           fi
 
@@ -62,7 +63,7 @@ jobs:
             bandit -r src'
 
       - name: Smoke test restricted Python repository sandbox
-        if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
         timeout-minutes: 5
         run: |
           fixture="$(mktemp -d "$RUNNER_TEMP/sandbox-smoke.XXXXXX")"
@@ -131,7 +132,8 @@ jobs:
         id: python-sbom
         if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
         run: |
-          python - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json" <<'PY'
+          cd "$RUNNER_TEMP"
+          python -I - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json" <<'PY'
           import json
           import sys
 
