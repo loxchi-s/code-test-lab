@@ -69,7 +69,7 @@ def _size_in_mib(
 def load_execution_policy(path: Path) -> dict[str, Any]:
     """Load and validate the policy without executing external commands."""
     try:
-        document = yaml.load(
+        document = yaml.load(  # nosec B506 - custom loader inherits SafeLoader and rejects duplicate keys.
             path.read_text(encoding="utf-8"),
             Loader=_UniqueKeySafeLoader,
         )
