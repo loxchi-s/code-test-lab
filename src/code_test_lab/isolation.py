@@ -140,6 +140,8 @@ def build_docker_command(
         f"{tmpfs_target}:rw,noexec,nosuid,size={execution['tmpfs_size']}",
         "--memory",
         str(execution["memory"]),
+        "--memory-swap",
+        str(execution["memory"]),
         "--cpus",
         str(execution["cpus"]),
         "--pids-limit",
