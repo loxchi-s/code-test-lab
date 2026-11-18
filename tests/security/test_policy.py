@@ -286,8 +286,6 @@ def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
 def test_image_inspection_uses_the_pinned_docker_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import json
-
     metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
     target = DockerTarget("/usr/bin/docker", ("--context", "remote-ci"))
     calls: list[list[str]] = []
