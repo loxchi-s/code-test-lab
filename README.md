@@ -18,7 +18,9 @@ The runtime adapter is the only GitHub API boundary.
 - `container_status(execution_id, ref)`: polls the workflow run.
 - `container_cancel(execution_id, ref)`: requests cancellation.
 
-The workflow uploads execution metadata as an artifact. Workflow logs contain test output.
+The adapter correlates the GitHub workflow run using its `display_title` (derived from
+`run-name`) and branch. The workflow uploads execution metadata as an artifact. Workflow logs
+contain test output.
 
 ## Configure the MCP server
 
@@ -37,7 +39,7 @@ the environment variables above. A hosted ChatGPT integration additionally requi
 reachable, authenticated MCP transport; a local stdio process is not automatically exposed
 to ChatGPT.
 
-## GitHub Actions permissions
+## GitHub Actions permissions and dispatch prerequisite
 
 The token used by the MCP host needs:
 - Actions: read and write (dispatch, list runs, cancel)
@@ -45,6 +47,11 @@ The token used by the MCP host needs:
 
 The workflow itself uses only `contents: read`. Do not use `pull_request_target` to execute
 untrusted pull request code with privileged secrets.
+
+GitHub requires a `workflow_dispatch` workflow file to exist on the repository's default
+branch before it can be dispatched. Therefore, while this pull request remains unmerged,
+MCP-to-Actions dispatch cannot be end-to-end verified. The PR is intentionally kept open and
+unmerged; after an authorized merge, dispatch can target the selected branch/ref.
 
 ## Security boundary
 
@@ -57,9 +64,8 @@ untrusted pull request code with privileged secrets.
 
 ## Known limitations (initial implementation)
 
-- The Actions adapter identifies runs by workflow run name and branch. This is suitable for
-  the initial prototype, but high-volume concurrency should use a durable execution ledger and
-  stronger correlation (for example, a GitHub App check-run ID).
+- Run lookup uses `display_title` plus branch. High-volume concurrency should use a durable
+  execution ledger and stronger correlation (for example, a GitHub App check-run ID).
 - Workflow outputs are available in Actions logs; the uploaded artifact currently contains
   execution metadata only, not arbitrary stdout/stderr capture.
 - The MCP server must be hosted on a machine/service reachable by its MCP client. GitHub
