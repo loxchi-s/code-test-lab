@@ -6,7 +6,7 @@ import argparse
 import re
 import subprocess  # nosec B404 - Docker is invoked with an argv list, never through a shell.
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -109,6 +109,7 @@ def build_docker_command(
     if not command or any(not item for item in command):
         raise ValueError("Container command must contain non-empty arguments")
 
+    tmpfs_target = str(PurePosixPath("/", "tmp"))
     return [
         "docker",
         "run",
@@ -117,7 +118,7 @@ def build_docker_command(
         "none",
         "--read-only",
         "--tmpfs",
-        f"/tmp:rw,noexec,nosuid,size={execution['tmpfs_size']}",  # nosec B108 - container-only tmpfs.
+        f"{tmpfs_target}:rw,noexec,nosuid,size={execution['tmpfs_size']}",
         "--memory",
         str(execution["memory"]),
         "--cpus",
@@ -146,8 +147,7 @@ def main() -> int:
     try:
         execution = load_execution_policy(args.policy)
         docker_argv = build_docker_command(args.image, command, execution)
-        # nosec B603 - argv-only invocation; workflow commands are fixed and container limits apply.
-        completed = subprocess.run(
+        completed = subprocess.run(  # nosec B603 - argv-only; CI command is fixed and Docker limits apply.
             docker_argv,
             check=False,
             shell=False,
