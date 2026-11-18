@@ -381,9 +381,13 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         step for step in job["steps"]
         if step.get("name") == "Convert SBOM Python packages into pinned requirements data"
     )
+    audit_setup_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Create isolated trusted pip-audit environment"
+    )
     audit_step = next(
         step for step in job["steps"]
-        if step.get("name") == "Audit image inventory with trusted pip-audit action"
+        if step.get("name") == "Audit image inventory with trusted pip-audit"
     )
     assert build_step["id"] == "build-image"
     assert "sha256sum --check" in next(
@@ -395,12 +399,11 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert "json.load" in requirements_step["run"]
     assert "pkg:pypi/" in requirements_step["run"]
     assert "multiple versions" in requirements_step["run"]
-    assert audit_step["uses"] == (
-        "pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266"
-    )
-    assert audit_step["with"]["disable-pip"] == "true"
-    assert audit_step["with"]["no-deps"] == "true"
-    assert audit_step["with"]["inputs"] == "${{ runner.temp }}/image-requirements.txt"
+    assert 'stream.write(f"{name}=={version}\\n")' in requirements_step["run"]
+    assert 'pip-audit==2.10.1' in audit_setup_step["run"]
+    assert 'python -I -m venv "$RUNNER_TEMP/pip-audit-venv"' in audit_setup_step["run"]
+    assert '"$RUNNER_TEMP/pip-audit-venv/bin/pip-audit"' in audit_step["run"]
+    assert "--no-deps --requirement" in audit_step["run"]
     assert not any("--entrypoint pip-audit" in run for run in run_steps)
     assert any("docker build" in run for run in run_steps)
     quality_step = next(
