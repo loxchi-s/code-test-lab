@@ -642,3 +642,23 @@ def test_policy_rejects_repeated_yaml_merge_keys(tmp_path: Path) -> None:
 def test_quality_command_guard_rejects_exit_status_masking() -> None:
     assert _is_single_fail_fast_docker_run("docker run image pytest -q")
     assert not _is_single_fail_fast_docker_run("docker run image pytest -q || true")
+
+
+def test_policy_rejects_excessive_yaml_alias_expansion(tmp_path: Path) -> None:
+    invalid = tmp_path / "alias-expansion.yml"
+    policy = POLICY_PATH.read_text(encoding="utf-8")
+    aliases = "base: &base {a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10}\n"
+    for index in range(12):
+        source = "base" if index == 0 else f"layer{index - 1}"
+        aliases += f"layer{index}: &layer{index} {{<<: *{source}}}\n"
+    aliases += "execution: {<<: *layer11}\n"
+    invalid.write_text(aliases + policy, encoding="utf-8")
+    with pytest.raises(PolicyError, match="expansion"):
+        load_execution_policy(invalid)
+
+
+def test_policy_rejects_oversized_yaml_file(tmp_path: Path) -> None:
+    invalid = tmp_path / "oversized.yml"
+    invalid.write_text(" " * (65 * 1024), encoding="utf-8")
+    with pytest.raises(PolicyError, match="exceeds"):
+        load_execution_policy(invalid)
