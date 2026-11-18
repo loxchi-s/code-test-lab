@@ -77,7 +77,7 @@ def main() -> int:
     except KeyboardInterrupt:
         if not container_started:
             return 130
-        cleanup_ok = container_name is not None and remove_container(container_name)
+        cleanup_ok = container_name is not None and remove_container(container_name, docker_target)
         if not cleanup_ok:
             print(
                 "Execution interrupted and cleanup could not be confirmed; "
