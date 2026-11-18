@@ -30,26 +30,49 @@ class PolicyError(ValueError):
 class _UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
-    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
-        direct_keys: set[Any] = set()
-        for key_node, _ in node.value:
-            if key_node.tag == "tag:yaml.org,2002:merge":
-                continue
-            key = self.construct_object(key_node, deep=deep)
-            try:
-                duplicate = key in direct_keys
-            except TypeError as exc:
-                raise yaml.constructor.ConstructorError(
-                    "while constructing a mapping", node.start_mark,
-                    "found an unhashable key", key_node.start_mark,
-                ) from exc
-            if duplicate:
-                raise yaml.constructor.ConstructorError(
-                    "while constructing a mapping", node.start_mark,
-                    f"found duplicate key {key!r}", key_node.start_mark,
-                )
-            direct_keys.add(key)
+    def _validate_mapping_tree(
+        self, node: yaml.Node, visited: set[int] | None = None,
+    ) -> None:
+        """Reject duplicate keys in every source mapping, including merge operands."""
+        if visited is None:
+            visited = set()
+        if id(node) in visited:
+            return
+        visited.add(id(node))
 
+        if isinstance(node, yaml.MappingNode):
+            direct_keys: set[Any] = set()
+            for key_node, value_node in node.value:
+                if key_node.tag == "tag:yaml.org,2002:merge":
+                    merge_nodes = (
+                        value_node.value
+                        if isinstance(value_node, yaml.SequenceNode)
+                        else [value_node]
+                    )
+                    for merge_node in merge_nodes:
+                        self._validate_mapping_tree(merge_node, visited)
+                else:
+                    key = self.construct_object(key_node, deep=True)
+                    try:
+                        duplicate = key in direct_keys
+                    except TypeError as exc:
+                        raise yaml.constructor.ConstructorError(
+                            "while constructing a mapping", node.start_mark,
+                            "found an unhashable key", key_node.start_mark,
+                        ) from exc
+                    if duplicate:
+                        raise yaml.constructor.ConstructorError(
+                            "while constructing a mapping", node.start_mark,
+                            f"found duplicate key {key!r}", key_node.start_mark,
+                        )
+                    direct_keys.add(key)
+                self._validate_mapping_tree(value_node, visited)
+        elif isinstance(node, yaml.SequenceNode):
+            for child in node.value:
+                self._validate_mapping_tree(child, visited)
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        self._validate_mapping_tree(node)
         self.flatten_mapping(node)
         return super().construct_mapping(node, deep=deep)
 
@@ -112,16 +135,19 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
     _size_in_mib(execution["tmpfs_size"], key="tmpfs_size", maximum=_MAX_TMPFS_MIB)
 
     cpus = execution["cpus"]
+    if isinstance(cpus, bool) or not isinstance(cpus, (int, float)):
+        raise PolicyError(
+            f"Execution setting 'cpus' must be numeric and in range [0.01, {_MAX_CPUS}]"
+        )
     try:
         cpu_value = Decimal(str(cpus))
-    except (InvalidOperation, ValueError):
-        cpu_value = Decimal("NaN")
+    except (InvalidOperation, ValueError) as exc:
+        raise PolicyError("Execution setting 'cpus' must be a finite decimal number") from exc
+    if not cpu_value.is_finite():
+        raise PolicyError("Execution setting 'cpus' must be a finite decimal number")
     nano_cpus = cpu_value * Decimal(1_000_000_000)
     if (
-        isinstance(cpus, bool)
-        or not isinstance(cpus, (int, float))
-        or not cpu_value.is_finite()
-        or cpu_value < Decimal("0.01")
+        cpu_value < Decimal("0.01")
         or cpu_value > Decimal(_MAX_CPUS)
         or nano_cpus != nano_cpus.to_integral_value()
     ):
