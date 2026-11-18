@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "chore/**"]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,6 +24,9 @@ jobs:
       - run: ruff check src tests
       - run: python -m pytest -q
       - run: python -m compileall -q src
+      - run: mypy src
+      - run: pip-audit
+      - run: bandit -r src
 
   container-validation:
     runs-on: ubuntu-latest
@@ -34,7 +37,7 @@ jobs:
           persist-credentials: false
       - name: Build isolated test image
         run: docker build --pull --tag code-test-lab:${{ github.sha }} .
-      - name: Run unit tests in restricted container
+      - name: Run unit and security tests in restricted container
         run: |
           docker run --rm \
             --network none \
@@ -58,15 +61,3 @@ jobs:
             --user 10001:10001 \
             code-test-lab:${{ github.sha }} \
             ruff check --no-cache src tests
-      - name: Run security tests in restricted container
-        run: |
-          docker run --rm \
-            --network none \
-            --read-only \
-            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --memory 2g --cpus 2 --pids-limit 256 \
-            --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --user 10001:10001 \
-            code-test-lab:${{ github.sha }} \
-            python -m pytest -q -p no:cacheprovider tests/security
