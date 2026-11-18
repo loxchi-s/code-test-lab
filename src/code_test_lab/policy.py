@@ -21,6 +21,9 @@ _MAX_CPUS = 4
 _MAX_PIDS = 512
 _MAX_TIMEOUT_MINUTES = 20
 _MAX_UID_GID = 65535
+_MAX_POLICY_BYTES = 64 * 1024
+_MAX_YAML_NODES = 10_000
+_MAX_YAML_DEPTH = 32
 
 
 class PolicyError(ValueError):
@@ -29,6 +32,37 @@ class PolicyError(ValueError):
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
+
+    def _validate_expansion_budget(self, node: yaml.Node) -> None:
+        """Bound alias/merge expansion work before PyYAML copies merged entries."""
+        active: set[int] = set()
+        node_visits = 0
+        mapping_entries = 0
+
+        def visit(current: yaml.Node, depth: int) -> None:
+            nonlocal node_visits, mapping_entries
+            node_visits += 1
+            if node_visits > _MAX_YAML_NODES or depth > _MAX_YAML_DEPTH:
+                raise PolicyError("Policy YAML exceeds the structural expansion limits")
+            identity = id(current)
+            if identity in active:
+                raise PolicyError("Policy YAML contains a recursive alias")
+            active.add(identity)
+            try:
+                if isinstance(current, yaml.MappingNode):
+                    mapping_entries += len(current.value)
+                    if mapping_entries > _MAX_YAML_NODES:
+                        raise PolicyError("Policy YAML exceeds the mapping expansion budget")
+                    for key_node, value_node in current.value:
+                        visit(key_node, depth + 1)
+                        visit(value_node, depth + 1)
+                elif isinstance(current, yaml.SequenceNode):
+                    for child in current.value:
+                        visit(child, depth + 1)
+            finally:
+                active.remove(identity)
+
+        visit(node, 0)
 
     def _validate_mapping_tree(
         self, node: yaml.Node, visited: set[int] | None = None,
@@ -79,6 +113,7 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
 
     def construct_document(self, node: yaml.Node) -> Any:
         """Validate the untouched source graph before PyYAML flattens merge nodes."""
+        self._validate_expansion_budget(node)
         self._validate_mapping_tree(node)
         return super().construct_document(node)
 
@@ -106,10 +141,17 @@ def _size_in_mib(
 def load_execution_policy(path: Path) -> dict[str, Any]:
     """Load and validate the policy without executing external commands."""
     try:
+        if path.stat().st_size > _MAX_POLICY_BYTES:
+            raise PolicyError(f"Policy file exceeds {_MAX_POLICY_BYTES} bytes")
+        policy_text = path.read_text(encoding="utf-8")
+        if len(policy_text.encode("utf-8")) > _MAX_POLICY_BYTES:
+            raise PolicyError(f"Policy file exceeds {_MAX_POLICY_BYTES} bytes")
         document = yaml.load(  # nosec B506 - custom loader inherits SafeLoader and rejects duplicate keys.
-            path.read_text(encoding="utf-8"),
+            policy_text,
             Loader=_UniqueKeySafeLoader,
         )
+    except PolicyError:
+        raise
     except (OSError, yaml.YAMLError) as exc:
         raise PolicyError(f"Unable to load policy: {exc}") from exc
 
