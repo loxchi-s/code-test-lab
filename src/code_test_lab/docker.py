@@ -186,7 +186,7 @@ def remove_container(
         raise ValueError("Container name must be a generated code-test-lab identifier")
     try:
         target = docker_target or resolve_docker_target()
-    except ValueError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(
             f"Cleanup failed: unable to resolve Docker target for {container_name}: {exc}",
             file=sys.stderr,
