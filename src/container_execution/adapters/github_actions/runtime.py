@@ -24,7 +24,7 @@ class GitHubActionsRuntime:
         self._workflow = workflow
 
     @classmethod
-    def from_environment(cls) -> "GitHubActionsRuntime":
+    def from_environment(cls) -> GitHubActionsRuntime:
         token = os.environ.get("GITHUB_TOKEN")
         repository = os.environ.get("GITHUB_REPOSITORY")
         if not token or not repository:
