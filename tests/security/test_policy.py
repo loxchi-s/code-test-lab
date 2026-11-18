@@ -1,3 +1,4 @@
+import json
 import re
 import shlex
 from pathlib import Path
@@ -27,9 +28,13 @@ DOCKER_TARGET = DockerTarget("/usr/bin/docker")
 
 def _docker_info_or_metadata(argv: list[str], metadata: object) -> CompletedProcess[str]:
     if "info" in argv:
-        return CompletedProcess(argv, 0, stdout="[]", stderr="")
-    import json
-
+        return CompletedProcess(
+            argv, 0,
+            stdout=json.dumps({
+                "PidsLimit": True, "MemoryLimit": True, "SwapLimit": True, "Warnings": [],
+            }),
+            stderr="",
+        )
     return CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr="")
 
 
@@ -295,7 +300,7 @@ def test_resolve_docker_target_preserves_explicit_context(monkeypatch: pytest.Mo
     monkeypatch.setenv("DOCKER_CONTEXT", "remote-ci")
     monkeypatch.setenv("DOCKER_HOST", "tcp://ignored.example:2376")
     target = resolve_docker_target()
-    assert target == DockerTarget("/usr/bin/docker", ("--context", "remote-ci"))
+    assert target == DockerTarget("/usr/bin/docker", ("--host", "tcp://ignored.example:2376"))
 
 
 def test_resolve_docker_target_preserves_explicit_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -324,12 +329,55 @@ def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
 ) -> None:
     def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
         return CompletedProcess(
-            argv, 0, stdout='["WARNING: No pids limit support"]', stderr="",
+            argv, 0,
+            stdout='{"PidsLimit":true,"MemoryLimit":true,"SwapLimit":true,"Warnings":["WARNING: No pids limit support"]}',
+            stderr="",
         )
 
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     with pytest.raises(ValueError, match="does not support enforcing PID limits"):
         resolve_image_id("local:test", DOCKER_TARGET)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("PidsLimit", False), ("PidsLimit", None),
+        ("MemoryLimit", False), ("MemoryLimit", None),
+        ("SwapLimit", False), ("SwapLimit", None),
+    ],
+)
+def test_resolve_image_id_fails_closed_without_explicit_resource_limit_support(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object,
+) -> None:
+    info: dict[str, object] = {
+        "PidsLimit": True, "MemoryLimit": True, "SwapLimit": True, "Warnings": [],
+    }
+    if value is None:
+        info.pop(field)
+    else:
+        info[field] = value
+    metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
+
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        if "info" in argv:
+            return CompletedProcess(argv, 0, stdout=json.dumps(info), stderr="")
+        return CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr="")
+
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
+    with pytest.raises(ValueError, match="does not report support"):
+        resolve_image_id("local:test", DOCKER_TARGET)
+
+
+def test_remove_container_returns_false_when_docker_target_resolution_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_resolution() -> DockerTarget:
+        raise ValueError("context lookup timed out")
+
+    monkeypatch.setattr("code_test_lab.docker.resolve_docker_target", fail_resolution)
+    assert remove_container(TEST_CONTAINER_NAME) is False
+    assert "Cleanup failed: unable to resolve Docker target" in capsys.readouterr().err
 
 
 def test_image_inspection_uses_the_pinned_docker_context(
@@ -426,8 +474,9 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Verify Docker daemon PID limit support"
     )
     assert pid_preflight_step["timeout-minutes"] == "2"
-    assert "docker info --format '{{json .Warnings}}'" in pid_preflight_step["run"]
-    assert 'test("pids limit"; "i")' in pid_preflight_step["run"]
+    assert pid_preflight_step["id"] == "docker-capabilities"
+    assert "docker info --format '{{json .}}'" in pid_preflight_step["run"]
+    assert ".PidsLimit == true and .MemoryLimit == true and .SwapLimit == true" in pid_preflight_step["run"]
     build_step = next(step for step in job["steps"] if step.get("name") == "Build validation image")
     sbom_step = next(
         step for step in job["steps"]
@@ -455,6 +504,8 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'syft --config "$RUNNER_TEMP/syft-empty.yaml"' in sbom_step["run"]
     assert 'cd "$RUNNER_TEMP"' in sbom_step["run"]
     assert "cyclonedx-json=" in sbom_step["run"]
+    assert 'cd "$RUNNER_TEMP"' in python_sbom_step["run"]
+    assert 'python -I - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json"' in python_sbom_step["run"]
     assert "pkg:pypi/" in python_sbom_step["run"]
     assert 'sbom["components"] = python_components' in python_sbom_step["run"]
     assert 'sbom.pop("dependencies", None)' in python_sbom_step["run"]
@@ -470,6 +521,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Smoke test restricted Python repository sandbox"
     )
     assert smoke_step["timeout-minutes"] == "5"
+    assert "steps.docker-capabilities.outcome == 'success'" in smoke_step["if"]
     assert "test_pytest_is_loaded_from_trusted_image" in smoke_step["run"]
     assert "test_target_mount_is_read_only" in smoke_step["run"]
     assert "errno.EROFS" in smoke_step["run"]
@@ -671,7 +723,7 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     assert "--redact" in command_tokens
     assert "--no-banner" in command_tokens
     assert (
-        '--log-opts=--all --full-history --diff-filter=uxdbT --diff-merges=first-parent $trusted_head'
+        '--log-opts=--all --full-history --diff-filter=uxdb --diff-merges=first-parent $trusted_head'
         in command_tokens
     )
 
@@ -739,7 +791,7 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
     assert "--ignore-gitleaks-allow" in scan_step["run"]
-    assert "--diff-filter=uxdbT" in scan_step["run"]
+    assert "--diff-filter=uxdb" in scan_step["run"]
     actionlint_job = workflow["jobs"]["actionlint"]
     lint_step = next(step for step in actionlint_job["steps"] if step.get("name", "").startswith("Lint workflows"))
     assert "actionlint -config-file \"$RUNNER_TEMP/actionlint-empty.yml\" -color" in lint_step["run"]
@@ -894,10 +946,16 @@ def test_policy_accepts_literal_merge_like_ordinary_key(tmp_path: Path) -> None:
     assert load_execution_policy(valid)["memory"] == "2g"
 
 
-def test_policy_rejects_excessive_nesting_before_yaml_composition(tmp_path: Path) -> None:
+def test_policy_rejects_excessive_nesting_before_yaml_composition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     invalid = tmp_path / "deeply-nested.yml"
     nested = "[" * 40 + "0" + "]" * 40
     invalid.write_text(f"version: 1\nexecution: {nested}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "code_test_lab.policy.yaml.load",
+        lambda *args, **kwargs: pytest.fail("YAML loader must not run"),
+    )
     with pytest.raises(PolicyError, match="structural expansion limits"):
         load_execution_policy(invalid)
 
