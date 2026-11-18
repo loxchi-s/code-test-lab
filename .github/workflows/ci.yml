@@ -62,7 +62,7 @@ jobs:
         id: image-sbom
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
-          : > "$RUNNER_TEMP/syft-empty.yaml"
+          printf '{}\\n' > "$RUNNER_TEMP/syft-empty.yaml"
           cd "$RUNNER_TEMP"
           syft --config "$RUNNER_TEMP/syft-empty.yaml" \
             "code-test-lab:${{ github.sha }}" \
@@ -82,7 +82,7 @@ jobs:
       - name: Scan image SBOM with trusted Grype
         if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' }}
         run: |
-          : > "$RUNNER_TEMP/grype-empty.yaml"
+          printf '{}\\n' > "$RUNNER_TEMP/grype-empty.yaml"
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-empty.yaml" \
             "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
