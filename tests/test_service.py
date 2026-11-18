@@ -1,5 +1,6 @@
 from container_execution.application.service import ContainerExecutionService
-from container_execution.domain.execution import ExecutionStatus, ExecutionTarget\nfrom container_execution.domain.execution_result import ExecutionResult
+from container_execution.domain.execution import ExecutionStatus, ExecutionTarget
+from container_execution.domain.execution_result import ExecutionResult
 
 
 class FakeRuntime:
@@ -11,6 +12,9 @@ class FakeRuntime:
 
     async def status(self, execution_id: str, ref: str) -> ExecutionStatus:
         return ExecutionStatus.COMPLETED
+
+    async def result(self, execution_id: str, ref: str) -> ExecutionResult:
+        return ExecutionResult(execution_id, ExecutionStatus.COMPLETED, ref, exit_code=0)
 
     async def cancel(self, execution_id: str, ref: str) -> None:
         return None
