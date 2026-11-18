@@ -187,7 +187,7 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         )
     except PolicyError:
         raise
-    except (OSError, yaml.YAMLError) as exc:
+    except (KeyError, OSError, yaml.YAMLError) as exc:
         raise PolicyError(f"Unable to load policy: {exc}") from exc
 
     if (
