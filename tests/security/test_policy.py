@@ -68,7 +68,10 @@ def _is_single_fail_fast_docker_run(script: str) -> bool:
     lexer = shlex.shlex(normalized, posix=True, punctuation_chars=";&|")
     lexer.whitespace_split = True
     lexer.commenters = ""
-    tokens = list(lexer)
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return False
     shell_operators = {";", "&&", "||", "&", "|"}
     return (
         tokens[:2] == ["docker", "run"]
