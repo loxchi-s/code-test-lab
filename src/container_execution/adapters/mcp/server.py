@@ -52,17 +52,19 @@ async def container_result(execution_id: str, ref: str = "main") -> dict[str, st
         return {"execution_id": execution_id, "status": "result_not_available"}
     stdout = result.stdout[:_MAX_RETURNED_LOG_CHARS]
     stderr = result.stderr[:_MAX_RETURNED_LOG_CHARS]
-    return {
+    response: dict[str, str | int | bool] = {
         "execution_id": execution_id,
         "status": result.status.value,
         "source_ref": result.source_ref,
-        "exit_code": result.exit_code if result.exit_code is not None else -1,
         "stdout": stdout,
         "stderr": stderr,
         "stdout_truncated": len(result.stdout) > len(stdout),
         "stderr_truncated": len(result.stderr) > len(stderr),
         "commit_sha": result.commit_sha,
     }
+    if result.exit_code is not None:
+        response["exit_code"] = result.exit_code
+    return response
 
 
 @mcp.tool()
