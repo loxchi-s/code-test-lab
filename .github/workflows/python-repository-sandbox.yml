@@ -59,7 +59,7 @@ jobs:
       - name: Build trusted Python sandbox image
         id: build-image
         working-directory: sandbox-harness
-        run: docker build --pull --tag code-test-lab-python:${GITHUB_SHA} .
+        run: docker build --pull --tag "code-test-lab-python:${GITHUB_SHA}" .
 
       - name: Run target pytest suite without network or credentials
         if: ${{ steps.build-image.outcome == 'success' }}
@@ -81,5 +81,5 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
             --entrypoint python \
-            code-test-lab-python:${GITHUB_SHA} \
+            "code-test-lab-python:${GITHUB_SHA}" \
             -m pytest -q -p no:cacheprovider /workspace/target
