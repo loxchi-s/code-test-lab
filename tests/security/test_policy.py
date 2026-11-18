@@ -1,5 +1,5 @@
 from pathlib import Path
-from subprocess import CompletedProcess
+from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 import yaml
@@ -8,6 +8,7 @@ from code_test_lab.isolation import (
     PolicyError,
     _remove_container,
     build_docker_command,
+    main as isolation_main,
     load_execution_policy,
 )
 
@@ -174,3 +175,27 @@ def test_policy_rejects_repository_secret_exposure(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyError, match="secrets"):
         load_execution_policy(invalid)
+
+
+def test_main_cleans_up_container_after_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append((argv, kwargs))
+        if argv[1] == "run":
+            raise TimeoutExpired(argv, timeout=1200)
+        return CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab",
+        "--policy", str(POLICY_PATH),
+        "--image", "code-test-lab:test",
+        "--", "python", "-m", "pytest",
+    ])
+    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr("code_test_lab.isolation.subprocess.run", fake_run)
+
+    assert isolation_main() == 124
+    assert calls[0][0][0:3] == ["docker", "run", "--rm"]
+    container_name = calls[0][0][calls[0][0].index("--name") + 1]
+    assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
