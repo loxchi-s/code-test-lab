@@ -91,7 +91,7 @@ jobs:
               assert os.getuid() == 10001
           PY
 
-          docker run --rm \
+          docker run --rm --name "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}" \
             --network none --read-only \
             --mount "type=bind,src=$fixture,dst=/workspace/target,readonly" \
             --workdir /workspace/target \
@@ -110,13 +110,14 @@ jobs:
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
+          scanner_dir="$(mktemp -d "$RUNNER_TEMP/syft.XXXXXX")"
           curl --fail --silent --show-error --location \
             https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_linux_amd64.tar.gz \
-            --output syft.tar.gz
-          echo "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c  syft.tar.gz" \
+            --output "$scanner_dir/syft.tar.gz"
+          echo "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c  $scanner_dir/syft.tar.gz" \
             | sha256sum --check
-          tar -xzf syft.tar.gz syft
-          sudo install syft /usr/local/bin/syft
+          tar -xzf "$scanner_dir/syft.tar.gz" -C "$scanner_dir" syft
+          sudo install "$scanner_dir/syft" /usr/local/bin/syft
 
       - name: Generate SBOM from the image without executing it
         id: image-sbom
@@ -164,13 +165,14 @@ jobs:
       - name: Install trusted Grype vulnerability scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
+          scanner_dir="$(mktemp -d "$RUNNER_TEMP/grype.XXXXXX")"
           curl --fail --silent --show-error --location \
             https://github.com/anchore/grype/releases/download/v0.122.0/grype_0.122.0_linux_amd64.tar.gz \
-            --output grype.tar.gz
-          echo "e697e6f7224637df87e267e4318cc027feae99a8e1b80280241d32b9ee5d4920  grype.tar.gz" \
+            --output "$scanner_dir/grype.tar.gz"
+          echo "e697e6f7224637df87e267e4318cc027feae99a8e1b80280241d32b9ee5d4920  $scanner_dir/grype.tar.gz" \
             | sha256sum --check
-          tar -xzf grype.tar.gz grype
-          sudo install grype /usr/local/bin/grype
+          tar -xzf "$scanner_dir/grype.tar.gz" -C "$scanner_dir" grype
+          sudo install "$scanner_dir/grype" /usr/local/bin/grype
 
       - name: Scan image SBOM with trusted Grype
         if: ${{ !cancelled() && steps.python-sbom.outcome == 'success' }}
