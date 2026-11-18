@@ -68,7 +68,10 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
     )
-    assert all(quality_run.count(flag) == 1 for flag in expected_policy_flags)
+    for flag_value in expected_policy_flags:
+        flag, value = flag_value.split(" ", maxsplit=1)
+        matches = re.findall(rf"(?<!\\S){re.escape(flag)}\\s+(\\S+)", quality_run)
+        assert matches == [value]
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
