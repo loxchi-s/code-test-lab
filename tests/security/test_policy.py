@@ -5,13 +5,14 @@ import pytest
 import yaml
 
 from code_test_lab.cli import main
-from code_test_lab.docker import build_docker_command, remove_container
+from code_test_lab.docker import build_docker_command, remove_container, resolve_image_id
 from code_test_lab.policy import PolicyError, load_execution_policy
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "config/test-policy.yml"
 WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 TEST_CONTAINER_NAME = "code-test-lab-" + "a" * 32
+IMAGE_ID = "sha256:" + "a" * 64
 
 
 def _workflow() -> dict:
@@ -52,7 +53,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
 def test_policy_generates_exact_restricted_docker_argv() -> None:
     execution = load_execution_policy(POLICY_PATH)
     argv = build_docker_command(
-        "code-test-lab:test", ["python", "-m", "pytest", "-q"], execution,
+        IMAGE_ID, ["python", "-m", "pytest", "-q"], execution,
         container_name=TEST_CONTAINER_NAME,
     )
     expected_pairs = {
@@ -73,13 +74,17 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     assert argv[-4:] == ["python", "-m", "pytest", "-q"]
     assert argv.count("--read-only") == 1
     assert argv.count("--network") == 1
+    assert "max-size=10m" in argv
+    assert "max-file=3" in argv
+    for proxy in ("HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "http_proxy=", "https_proxy=", "all_proxy="):
+        assert proxy in argv
 
 
 def test_container_command_is_passed_as_distinct_argv_items() -> None:
     execution = load_execution_policy(POLICY_PATH)
     marker = "test; touch /tmp/should-not-run"
     argv = build_docker_command(
-        "code-test-lab:test", ["python", "-c", marker], execution,
+        IMAGE_ID, ["python", "-c", marker], execution,
         container_name=TEST_CONTAINER_NAME,
     )
     assert argv[-3:] == ["python", "-c", marker]
@@ -88,7 +93,7 @@ def test_container_command_is_passed_as_distinct_argv_items() -> None:
 def test_container_command_allows_empty_non_executable_operands() -> None:
     execution = load_execution_policy(POLICY_PATH)
     argv = build_docker_command(
-        "code-test-lab:test", ["printf", "%s", ""], execution,
+        IMAGE_ID, ["printf", "%s", ""], execution,
         container_name=TEST_CONTAINER_NAME,
     )
     assert argv[-3:] == ["printf", "%s", ""]
@@ -107,7 +112,7 @@ def test_container_name_rejects_untrusted_values() -> None:
     execution = load_execution_policy(POLICY_PATH)
     with pytest.raises(ValueError, match="generated"):
         build_docker_command(
-            "code-test-lab:test", ["python", "-m", "pytest"], execution,
+            IMAGE_ID, ["python", "-m", "pytest"], execution,
             container_name="--privileged",
         )
 
@@ -210,10 +215,11 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
         return CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setattr("sys.argv", [
-        "code-test-lab", "--policy", str(POLICY_PATH), "--image", "code-test-lab:test",
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", IMAGE_ID,
         "--", "python", "-m", "pytest",
     ])
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", fake_run)
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     assert main() == 124
@@ -221,3 +227,35 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
     assert calls[0][1]["timeout"] == 1200
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
+
+    
+def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def timeout_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        raise TimeoutExpired(argv, timeout=1200)
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
+        "--", "python", "-m", "pytest",
+    ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.subprocess.run", timeout_run)
+    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda _: False)
+    assert main() == 125
+    assert "cleanup could not be confirmed" in capsys.readouterr().err
+
+
+def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def interrupt_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
+        "--", "python", "-m", "pytest",
+    ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.subprocess.run", interrupt_run)
+    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name: calls.append(name) or True)
+    assert main() == 130
+    assert len(calls) == 1
