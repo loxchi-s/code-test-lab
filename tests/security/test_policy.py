@@ -23,6 +23,18 @@ def _workflow() -> dict:
     return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
+def _is_single_fail_fast_docker_run(script: str) -> bool:
+    """Reject shell suffixes that could mask the Docker command exit status."""
+    normalized = script.replace(chr(92) + "\\n", " ")
+    command = normalized.split("docker run", maxsplit=1)
+    return (
+        normalized.count("docker run") == 1
+        and len(command) == 2
+        and "pytest" in command[1]
+        and not re.search(r"(?:\\|\\||&&|;)", command[1])
+    )
+
+
 def _contains_untrusted_credential(expression: str) -> bool:
     return bool(re.search(
         r"\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\.token\b)",
@@ -261,6 +273,11 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         "!cancelled() && steps.build-image.outcome == 'success'"
     )
     assert any("docker build" in run for run in run_steps)
+    quality_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Run quality checks without network or credentials"
+    )
+    assert _is_single_fail_fast_docker_run(quality_step["run"])
     assert any("docker run" in run and "pytest" in run for run in run_steps)
     assert not any("pip install -e" in run for run in run_steps)
 
@@ -620,3 +637,8 @@ def test_policy_rejects_repeated_yaml_merge_keys(tmp_path: Path) -> None:
     invalid.write_text(text, encoding="utf-8")
     with pytest.raises(PolicyError, match="duplicate merge key"):
         load_execution_policy(invalid)
+
+
+def test_quality_command_guard_rejects_exit_status_masking() -> None:
+    assert _is_single_fail_fast_docker_run("docker run image pytest -q")
+    assert not _is_single_fail_fast_docker_run("docker run image pytest -q || true")
