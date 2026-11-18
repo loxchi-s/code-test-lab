@@ -37,8 +37,11 @@ def main() -> int:
             docker_argv, check=False, shell=False,
             timeout=float(execution["timeout_minutes"]) * 60,
         )
-        if completed.returncode != 0 and container_name is not None:
-            if not remove_container(container_name):
+        if (
+            completed.returncode != 0
+            and container_name is not None
+            and not remove_container(container_name)
+        ):
                 print(
                     "Docker client failed and cleanup could not be confirmed; "
                     "the container may still be running.",
