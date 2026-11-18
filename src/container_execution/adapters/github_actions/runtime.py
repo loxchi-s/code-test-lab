@@ -66,7 +66,10 @@ class GitHubActionsRuntime:
             f"actions/workflows/{self._workflow}/runs?branch={ref}&event=workflow_dispatch&per_page=100",
         )
         expected = f"Container execution {execution_id}"
-        return next((run for run in data.get("workflow_runs", []) if run.get("name") == expected), None)
+        return next(
+            (run for run in data.get("workflow_runs", []) if run.get("display_title") == expected),
+            None,
+        )
 
     async def status(self, execution_id: str, ref: str) -> ExecutionStatus:
         run = await self._find_run(execution_id, ref)
