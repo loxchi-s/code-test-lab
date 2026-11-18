@@ -7,6 +7,7 @@ from container_execution.domain.execution import (
     ExecutionStatus,
     ExecutionTarget,
 )
+from container_execution.domain.execution_result import ExecutionResult
 from container_execution.ports.execution_runtime import ExecutionRuntime
 
 
@@ -21,6 +22,9 @@ class ContainerExecutionService:
 
     async def status(self, execution_id: str, ref: str = "main") -> ExecutionStatus:
         return await self._runtime.status(execution_id, ref)
+
+    async def result(self, execution_id: str, ref: str = "main") -> ExecutionResult | None:
+        return await self._runtime.result(execution_id, ref)
 
     async def cancel(self, execution_id: str, ref: str = "main") -> None:
         await self._runtime.cancel(execution_id, ref)
