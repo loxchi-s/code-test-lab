@@ -441,13 +441,14 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     )
     assert "syft_1.57.1_linux_amd64.tar.gz" in syft_install_step["run"]
     assert "sha256sum --check" in syft_install_step["run"]
-    assert "syft \"code-test-lab:${{ github.sha }}\"" in sbom_step["run"]
+    assert 'syft --config "$RUNNER_TEMP/syft-empty.yaml"' in sbom_step["run"]
+    assert 'cd "$RUNNER_TEMP"' in sbom_step["run"]
     assert "cyclonedx-json=" in sbom_step["run"]
     assert "grype_0.122.0_linux_amd64.tar.gz" in grype_install_step["run"]
     assert "sha256sum --check" in grype_install_step["run"]
-    assert grype_scan_step["run"] == (
-        'grype "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low'
-    )
+    assert 'grype --config "$RUNNER_TEMP/grype-empty.yaml"' in grype_scan_step["run"]
+    assert 'cd "$RUNNER_TEMP"' in grype_scan_step["run"]
+    assert '"sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low' in grype_scan_step["run"]
     assert not any("pip-audit" in run for run in run_steps)
     assert any("docker build" in run for run in run_steps)
     quality_step = next(
