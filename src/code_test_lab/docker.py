@@ -114,6 +114,8 @@ def remove_container(container_name: str) -> bool:
         return False
     if result.returncode != 0:
         detail = (result.stderr or "").strip()
+        if "No such container" in detail or "No such object" in detail:
+            return True
         print(
             f"Cleanup failed for {container_name} (exit {result.returncode}): "
             f"{detail or 'Docker returned a non-zero status'}; container may still be running.",
