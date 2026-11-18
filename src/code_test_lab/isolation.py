@@ -1,4 +1,4 @@
-"""Load the repository isolation policy and execute Docker commands from it."""
+""""Load the repository isolation policy and execute Docker commands from it."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import re
 import subprocess  # nosec B404 - Docker is invoked with an argv list, never through a shell.
 import sys
+import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -29,6 +30,7 @@ _MAX_CPUS = 4
 _MAX_PIDS = 512
 _MAX_TIMEOUT_MINUTES = 20
 _MAX_UID_GID = 65535
+_CONTAINER_NAME_PATTERN = re.compile(r"code-test-lab-[a-f0-9]{32}")
 
 
 class PolicyError(ValueError):
@@ -37,7 +39,7 @@ class PolicyError(ValueError):
 
 def _size_in_mib(value: object, *, key: str, maximum: int) -> int:
     """Parse a positive Docker size and enforce its upper bound."""
-    if not isinstance(value, str) or not re.fullmatch(r"\d+[mMgG]", value):
+    if not isinstance(value, str) or not re.fullmatch(r"\\d+[mMgG]", value):
         raise PolicyError(f"Execution setting {key!r} must be a positive MiB/GiB size")
 
     amount = int(value[:-1])
@@ -76,7 +78,7 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Only filesystem: read-only is permitted")
 
     user = execution["user"]
-    if not isinstance(user, str) or not re.fullmatch(r"\d+:\d+", user):
+    if not isinstance(user, str) or not re.fullmatch(r"\\d+:\\d+", user):
         raise PolicyError("Execution user must be a numeric UID:GID pair")
     uid, gid = (int(part) for part in user.split(":"))
     if not 1 <= uid <= _MAX_UID_GID or not 1 <= gid <= _MAX_UID_GID:
@@ -120,19 +122,27 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
 
 
 def build_docker_command(
-    image: str, command: list[str], execution: dict[str, Any]
+    image: str,
+    command: list[str],
+    execution: dict[str, Any],
+    *,
+    container_name: str,
 ) -> list[str]:
     """Build a Docker argv vector; never interpolate commands through a shell."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
         raise ValueError("Docker image reference contains unsupported characters")
     if not command or any(not item for item in command):
         raise ValueError("Container command must contain non-empty arguments")
+    if not _CONTAINER_NAME_PATTERN.fullmatch(container_name):
+        raise ValueError("Container name must be a generated code-test-lab identifier")
 
     tmpfs_target = str(PurePosixPath("/", "tmp"))
     return [
         "docker",
         "run",
         "--rm",
+        "--name",
+        container_name,
         "--network",
         "none",
         "--read-only",
@@ -157,6 +167,31 @@ def build_docker_command(
     ]
 
 
+def _remove_container(container_name: str) -> bool:
+    """Best-effort cleanup for a container whose Docker client timed out."""
+    try:
+        result = subprocess.run(
+            ["docker", "rm", "--force", container_name],
+            check=False,
+            shell=False,
+            timeout=10,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
+        print(f"Warning: unable to clean up timed-out container: {exc}", file=sys.stderr)
+        return False
+
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        print(
+            f"Warning: Docker container cleanup returned {result.returncode}: {detail}",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", type=Path, default=Path("config/test-policy.yml"))
@@ -167,7 +202,13 @@ def main() -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     try:
         execution = load_execution_policy(args.policy)
-        docker_argv = build_docker_command(args.image, command, execution)
+        container_name = f"code-test-lab-{uuid.uuid4().hex}"
+        docker_argv = build_docker_command(
+            args.image,
+            command,
+            execution,
+            container_name=container_name,
+        )
         completed = subprocess.run(  # nosec B603 - argv-only; CI command is fixed and Docker limits apply.
             docker_argv,
             check=False,
@@ -182,6 +223,7 @@ def main() -> int:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
+        _remove_container(container_name)
         print(
             f"Container command exceeded {execution['timeout_minutes']} minutes",
             file=sys.stderr,
