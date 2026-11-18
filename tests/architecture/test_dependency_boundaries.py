@@ -43,6 +43,8 @@ def _internal_imports(path: Path) -> set[str]:
                         imported = _local_relative_module(alias.name)
                         if imported:
                             imports.add(imported)
+                        elif alias.name not in {"*"}:
+                            imports.add("__init__")
                 else:
                     imported = _local_module(node.module)
                     if imported:
@@ -81,9 +83,8 @@ def test_dependency_direction_respects_module_boundaries() -> None:
 def test_package_has_no_circular_module_dependencies() -> None:
     """Reject direct or transitive cycles between top-level package modules."""
     graph = {
-        path.stem: _internal_imports(path)
+        ("__init__" if path.name == "__init__.py" else path.stem): _internal_imports(path)
         for path in sorted(PACKAGE_ROOT.glob("*.py"))
-        if path.name != "__init__.py"
     }
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -120,3 +121,9 @@ def test_bare_absolute_external_import_is_not_a_local_dependency(tmp_path: Path)
     sample = tmp_path / "external_import.py"
     sample.write_text("import docker\n", encoding="utf-8")
     assert _internal_imports(sample) == set()
+
+
+def test_package_root_value_imports_point_to_initializer(tmp_path: Path) -> None:
+    sample = tmp_path / "sample.py"
+    sample.write_text("from code_test_lab import VERSION\\n", encoding="utf-8")
+    assert "__init__" in _internal_imports(sample)
