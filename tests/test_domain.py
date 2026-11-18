@@ -1,7 +1,9 @@
 import pytest
 
 from container_execution.domain.execution import (
-    ExecutionRequest, ExecutionStatus, ExecutionTarget,
+    ExecutionRequest,
+    ExecutionStatus,
+    ExecutionTarget,
 )
 
 
