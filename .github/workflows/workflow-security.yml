@@ -53,19 +53,15 @@ jobs:
           sudo install gitleaks /usr/local/bin/gitleaks
       - name: Scan all commits using trusted base-branch rules
         env:
-          TRUSTED_BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          TRUSTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
-          git fetch --no-tags origin "$TRUSTED_BASE_REF"
-          trusted_base="$(git rev-parse FETCH_HEAD)"
+          trusted_base="$TRUSTED_BASE_SHA"
           trusted_dir="$RUNNER_TEMP/trusted-gitleaks"
           git worktree add --detach "$trusted_dir" "$trusted_base"
 
           trusted_config="$trusted_dir/.gitleaks.toml"
           if [ ! -f "$trusted_config" ]; then
-            cat > "$trusted_config" <<'EOF'
-          [extend]
-          useDefault = true
-          EOF
+            printf '%s\\n' '[extend]' 'useDefault = true' > "$trusted_config"
           fi
 
           trusted_ignore="$trusted_dir/.gitleaksignore"
