@@ -73,11 +73,12 @@ jobs:
           fi
 
           cd "$trusted_dir"
-          gitleaks git "$GITHUB_WORKSPACE" \
+          gitleaks git . \
             --config "$trusted_config" \
             --gitleaks-ignore-path "$trusted_ignore" \
+            --ignore-gitleaks-allow \
             --redact --no-banner \
-            --log-opts="--all --full-history --diff-filter=uxdb --diff-merges=first-parent"
+            --log-opts="--all --full-history --diff-filter=uxdbT --diff-merges=first-parent"
 
   zizmor:
     name: GitHub Actions security audit
@@ -94,6 +95,6 @@ jobs:
       - name: Install pinned zizmor outside the checkout
         run: "${{ runner.temp }}/zizmor-venv/bin/python -I -m pip install --disable-pip-version-check zizmor==1.32.0"
       - name: Audit workflow security
-        run: "${{ runner.temp }}/zizmor-venv/bin/zizmor --no-config --format=github --min-severity=high ."
+        run: "${{ runner.temp }}/zizmor-venv/bin/zizmor --no-config --no-ignores --collect=all --format=github --min-severity=high ."
         env:
           GH_TOKEN: ${{ github.token }}
