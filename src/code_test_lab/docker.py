@@ -75,7 +75,7 @@ def _require_pid_limit_support(target: DockerTarget) -> None:
     except json.JSONDecodeError as exc:
         raise ValueError("Docker daemon returned invalid capability metadata") from exc
     if not isinstance(info, dict):
-        raise ValueError("Docker daemon returned an invalid capability object")
+        raise TypeError("Docker daemon returned an invalid capability object")
     warnings = info.get("Warnings")
     if warnings is None:
         warnings = []
