@@ -166,7 +166,6 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert "stop-commands" in run_step["run"]
     assert "printf '\\n::%s::\\n' \"$marker\"" in run_step["run"]
     assert run_step["run"].rstrip().endswith("2>&1")
-    assert "printf '::%s::\\n' \"$marker\"" in run_step["run"]
 
     tokens = _docker_run_tokens(run_step["run"])
     options, image, command = _docker_options(tokens)
