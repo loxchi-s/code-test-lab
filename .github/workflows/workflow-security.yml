@@ -61,7 +61,10 @@ jobs:
 
           trusted_config="$trusted_dir/.gitleaks.toml"
           if [ ! -f "$trusted_config" ]; then
-            printf '%s\\n' '[extend]' 'useDefault = true' > "$trusted_config"
+            {
+              echo '[extend]'
+              echo 'useDefault = true'
+            } > "$trusted_config"
           fi
 
           trusted_ignore="$trusted_dir/.gitleaksignore"
