@@ -53,7 +53,7 @@ jobs:
         run: |
           fixture="$(mktemp -d "$RUNNER_TEMP/sandbox-smoke.XXXXXX")"
           trap 'rm -rf "$fixture"' EXIT
-          chmod 755 "$fixture"
+          chmod 777 "$fixture"
           cat > "$fixture/test_sandbox_smoke.py" <<'PY'
           import errno
           import os
