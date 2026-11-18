@@ -102,10 +102,11 @@ def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPat
         captured["kwargs"] = kwargs
         return CompletedProcess(argv, 0, stdout="", stderr="")
 
+    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.isolation.subprocess.run", fake_run)
 
     assert _remove_container(TEST_CONTAINER_NAME) is True
-    assert captured["argv"] == ["docker", "rm", "--force", TEST_CONTAINER_NAME]
+    assert captured["argv"] == ["/usr/bin/docker", "rm", "--force", TEST_CONTAINER_NAME]
     assert captured["kwargs"] == {
         "check": False,
         "shell": False,
@@ -119,6 +120,7 @@ def test_timeout_cleanup_reports_missing_docker(monkeypatch: pytest.MonkeyPatch)
     def missing_docker(*args: object, **kwargs: object) -> None:
         raise FileNotFoundError("docker")
 
+    monkeypatch.setattr("code_test_lab.isolation.shutil.which", lambda _: None)
     monkeypatch.setattr("code_test_lab.isolation.subprocess.run", missing_docker)
 
     assert _remove_container(TEST_CONTAINER_NAME) is False
