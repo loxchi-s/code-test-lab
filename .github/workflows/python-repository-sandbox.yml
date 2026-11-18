@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       repository:
-        description: "Target repository (owner/repository). Public by default; private repositories need TARGET_REPO_READ_TOKEN."
+        description: "Public GitHub repository (owner/repository). Private repositories are rejected to protect test output."
         required: true
         type: string
       ref:
@@ -44,6 +44,16 @@ jobs:
             echo "::error::ref must not be empty"
             exit 2
           fi
+          metadata="$(curl --fail --silent --show-error --location \
+            "https://api.github.com/repos/$TARGET_REPOSITORY")" || {
+            echo "::error::target repository must be publicly accessible"
+            exit 2
+          }
+          visibility="$(jq -r '.visibility // "unknown"' <<< "$metadata")"
+          if [[ "$visibility" != "public" ]]; then
+            echo "::error::private target repositories are not supported because harness log readers may not have access"
+            exit 2
+          fi
 
       - name: Checkout target repository into isolated workspace
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -51,7 +61,6 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
           path: target-repository
-          token: ${{ secrets.TARGET_REPO_READ_TOKEN || github.token }}
           persist-credentials: false
           clean: true
           fetch-depth: 1
@@ -63,7 +72,17 @@ jobs:
 
       - name: Run target pytest suite without network or credentials
         if: ${{ steps.build-image.outcome == 'success' }}
+        timeout-minutes: 20
         run: |
+          marker="$(cat /proc/sys/kernel/random/uuid)"
+          restore_workflow_commands() {
+            local exit_code=$?
+            trap - EXIT
+            printf '::%s::\\n' "$marker"
+            exit "$exit_code"
+          }
+          trap restore_workflow_commands EXIT
+          printf '::stop-commands::%s\\n' "$marker"
           docker run --rm \
             --network none \
             --read-only \
@@ -82,4 +101,4 @@ jobs:
             --user 10001:10001 \
             --entrypoint python \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -m pytest -q -p no:cacheprovider /workspace/target
+            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))'
