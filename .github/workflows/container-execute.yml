@@ -49,6 +49,8 @@ jobs:
           fi
           git check-ref-format --branch "$SOURCE_REF" >/dev/null
           mkdir -p execution-result
+          : > execution-result/stdout.log
+          : > execution-result/stderr.log
           echo "valid=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout trusted workflow revision
