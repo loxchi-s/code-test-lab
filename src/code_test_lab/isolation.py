@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess  # nosec B404 - Docker is invoked with an argv list, never through a shell.
 import sys
 import uuid
@@ -169,9 +170,14 @@ def build_docker_command(
 
 def _remove_container(container_name: str) -> bool:
     """Best-effort cleanup for a container whose Docker client timed out."""
+    docker_executable = shutil.which("docker")
+    if docker_executable is None:
+        print("Warning: Docker executable not found; timed-out container may remain.", file=sys.stderr)
+        return False
+
     try:
         result = subprocess.run(  # nosec B603 - fixed Docker cleanup argv, no shell.
-            ["docker", "rm", "--force", container_name],
+            [docker_executable, "rm", "--force", container_name],
             check=False,
             shell=False,
             timeout=10,
