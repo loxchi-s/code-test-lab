@@ -144,8 +144,10 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     )
 
     assert capability_step["timeout-minutes"] == "2"
-    assert "docker info --format '{{json .Warnings}}'" in capability_step["run"]
-    assert 'test("pids limit"; "i")' in capability_step["run"]
+    assert "docker info --format '{{json .}}'" in capability_step["run"]
+    assert ".PidsLimit == true" in capability_step["run"]
+    assert ".MemoryLimit == true" in capability_step["run"]
+    assert ".SwapLimit == true" in capability_step["run"]
     assert build["working-directory"] == "sandbox-harness"
     assert shlex.split(build["run"]) == [
         "docker", "build", "--pull", "--tag",
