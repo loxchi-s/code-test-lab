@@ -47,6 +47,48 @@ jobs:
             mypy --cache-dir=/tmp/mypy_cache src
             bandit -r src'
 
+      - name: Smoke test restricted Python repository sandbox
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          fixture="$(mktemp -d "$RUNNER_TEMP/sandbox-smoke.XXXXXX")"
+          trap 'rm -rf "$fixture"' EXIT
+          cat > "$fixture/test_sandbox_smoke.py" <<'PY'
+          import os
+          from pathlib import Path
+
+          import pytest
+
+
+          def test_pytest_is_loaded_from_trusted_image() -> None:
+              assert "/workspace/target/" not in str(Path(pytest.__file__).resolve())
+
+
+          def test_target_mount_is_read_only() -> None:
+              with pytest.raises(PermissionError):
+                  Path("/workspace/target/.write-probe").write_text("must fail")
+
+
+          def test_container_runs_as_non_root() -> None:
+              assert os.getuid() == 10001
+          PY
+
+          docker run --rm \
+            --network none --read-only \
+            --mount "type=bind,src=$fixture,dst=/workspace/target,readonly" \
+            --workdir /workspace/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
+            --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
+            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 --env XDG_CACHE_HOME=/tmp/cache \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --entrypoint python \
+            "code-test-lab:${{ github.sha }}" \
+            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))'
+
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
