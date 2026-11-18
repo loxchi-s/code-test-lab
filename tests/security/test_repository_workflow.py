@@ -86,28 +86,25 @@ def test_repository_validation_rejects_private_and_blank_refs(
     validate = next(
         step for step in steps if step.get("name") == "Validate target repository input"
     )
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    curl = bin_dir / "curl"
-    curl.write_text(
-        '#!/bin/sh\nprintf \'{"visibility":"%s"}\' "$TEST_VISIBILITY"\n',
-        encoding="utf-8",
-    )
-    jq = bin_dir / "jq"
-    jq.write_text('#!/bin/sh\nprintf \'%s\\n\' "$TEST_VISIBILITY"\n', encoding="utf-8")
-    curl.chmod(0o755)
-    jq.chmod(0o755)
     base_env = os.environ.copy()
     base_env.update({
-        "PATH": f"{bin_dir}{os.pathsep}{base_env.get('PATH', '')}",
         "TARGET_REPOSITORY": "owner/public-repo",
         "TARGET_REF": "main",
     })
+    wrapper = (
+        'curl() { printf \\'{"visibility":"%s"}\\' "$TEST_VISIBILITY"; }; '
+        'jq() { printf \\'%s\\\\n\\' "$TEST_VISIBILITY"; }; '
+        'eval "$VALIDATE_SCRIPT"'
+    )
 
     def run_validation(visibility: str, ref: str = "main") -> subprocess.CompletedProcess[str]:
-        env = base_env | {"TEST_VISIBILITY": visibility, "TARGET_REF": ref}
+        env = base_env | {
+            "TEST_VISIBILITY": visibility,
+            "TARGET_REF": ref,
+            "VALIDATE_SCRIPT": validate["run"],
+        }
         return subprocess.run(
-            ["bash", "-e", "-c", validate["run"]],
+            ["bash", "-e", "-c", wrapper],
             cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
         )
 
