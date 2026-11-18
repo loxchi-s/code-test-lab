@@ -39,6 +39,7 @@ def test_policy_generates_the_restricted_docker_argv() -> None:
         "--read-only",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
         "--memory", "2g",
+        "--memory-swap", "2g",
         "--cpus", "2",
         "--pids-limit", "256",
         "--cap-drop", "ALL",
