@@ -396,9 +396,11 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
         if line.lstrip().startswith("gitleaks git ")
     )
     command_lines = [scan_lines[command_start]]
-    while command_lines[-1].rstrip().endswith("\\\\"):
+    while command_lines[-1].rstrip().endswith(chr(92)):
         command_lines.append(scan_lines[command_start + len(command_lines)])
-    command = "\\n".join(command_lines).replace("\\\\\\n", " ")
+    command = " ".join(
+        line.rstrip().removesuffix(chr(92)) for line in command_lines
+    )
     command_tokens = shlex.split(command)
     assert command_tokens[:2] == ["gitleaks", "git"]
     assert command_tokens[2] == "$GITHUB_WORKSPACE"
@@ -468,7 +470,7 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert 'gitleaks git "$GITHUB_WORKSPACE"' in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
-    assert '--config "$trusted_config"' in scan
+    assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
 
     zizmor_job = workflow["jobs"]["zizmor"]
