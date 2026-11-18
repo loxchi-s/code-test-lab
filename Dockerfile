@@ -9,6 +9,7 @@ COPY tests ./tests
 COPY config ./config
 COPY .github/workflows/ci.yml ./.github/workflows/ci.yml
 COPY .github/workflows/workflow-security.yml ./.github/workflows/workflow-security.yml
+COPY .github/workflows/python-repository-sandbox.yml ./.github/workflows/python-repository-sandbox.yml
 
 RUN python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
     && python -m pip install --no-cache-dir '.[dev]' \
