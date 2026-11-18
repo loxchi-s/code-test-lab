@@ -10,7 +10,6 @@ from urllib.request import Request, urlopen
 
 from container_execution.domain.execution import ExecutionRequest, ExecutionStatus
 
-
 _REPOSITORY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}")
 _WORKFLOW_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,128}\.ya?ml")
 _EXECUTION_ID_PATTERN = re.compile(r"[a-f0-9]{32}")
