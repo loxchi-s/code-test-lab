@@ -53,7 +53,9 @@ jobs:
         run: |
           fixture="$(mktemp -d "$RUNNER_TEMP/sandbox-smoke.XXXXXX")"
           trap 'rm -rf "$fixture"' EXIT
+          chmod 755 "$fixture"
           cat > "$fixture/test_sandbox_smoke.py" <<'PY'
+          import errno
           import os
           from pathlib import Path
 
@@ -65,8 +67,9 @@ jobs:
 
 
           def test_target_mount_is_read_only() -> None:
-              with pytest.raises(PermissionError):
+              with pytest.raises(OSError) as error:
                   Path("/workspace/target/.write-probe").write_text("must fail")
+              assert error.value.errno == errno.EROFS
 
 
           def test_container_runs_as_non_root() -> None:
