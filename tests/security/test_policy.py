@@ -78,16 +78,27 @@ def test_container_timeout_is_derived_from_policy() -> None:
     assert execution["timeout_minutes"] == 20
 
 
-def test_policy_rejects_network_access(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("network: disabled", "network: enabled", "network: disabled"),
+        ("user: \"10001:10001\"", "user: \"0:0\"", "non-root"),
+        ("memory: \"2g\"", "memory: \"999g\"", "memory"),
+        ("tmpfs_size: \"256m\"", "tmpfs_size: \"9999m\"", "tmpfs_size"),
+        ("cpus: 2", "cpus: 999", "cpus"),
+        ("pids_limit: 256", "pids_limit: 99999", "pids_limit"),
+        ("timeout_minutes: 20", "timeout_minutes: 21", "timeout_minutes"),
+    ],
+)
+def test_policy_rejects_unsafe_execution_limits(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
     invalid = tmp_path / "policy.yml"
-    invalid.write_text(
-        POLICY_PATH.read_text(encoding="utf-8").replace(
-            "network: disabled", "network: enabled"
-        ),
-        encoding="utf-8",
-    )
+    policy_text = POLICY_PATH.read_text(encoding="utf-8")
+    assert old in policy_text
+    invalid.write_text(policy_text.replace(old, new), encoding="utf-8")
 
-    with pytest.raises(PolicyError, match="network: disabled"):
+    with pytest.raises(PolicyError, match=message):
         load_execution_policy(invalid)
 
 
