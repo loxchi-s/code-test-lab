@@ -578,3 +578,30 @@ def test_main_cleans_up_after_docker_client_failure(
     assert main() == 125
     assert len(cleanup_calls) == 1
     assert capsys.readouterr().err == ""
+
+
+
+def test_docker_command_overrides_image_entrypoint_and_preserves_empty_operands() -> None:
+    command = build_docker_command(
+        IMAGE_ID, ["printf", "%s", ""], load_execution_policy(POLICY_PATH),
+        container_name=TEST_CONTAINER_NAME,
+    )
+    assert command[command.index("--entrypoint") + 1] == "printf"
+    assert command[-2:] == ["%s", ""]
+
+
+@pytest.mark.parametrize("metadata", [None, [], {"Config": None}, {"Config": []}])
+def test_resolve_image_id_rejects_invalid_metadata_shape(
+    monkeypatch: pytest.MonkeyPatch, metadata: object,
+) -> None:
+    import json
+
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "code_test_lab.docker.subprocess.run",
+        lambda *args, **kwargs: CompletedProcess(
+            args[0], 0, stdout=json.dumps(metadata), stderr="",
+        ),
+    )
+    with pytest.raises(ValueError, match="invalid object|missing Config"):
+        resolve_image_id("local:test")
