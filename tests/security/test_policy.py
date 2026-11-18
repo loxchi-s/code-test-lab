@@ -472,7 +472,8 @@ def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch
         "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
         "--", "python", "-m", "pytest",
     ])
-    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", interrupt_run)
     monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: calls.append(name) or True)
     assert main() == 130
@@ -578,7 +579,7 @@ def test_main_interrupt_before_container_launch_returns_130_without_cleanup(
     monkeypatch.setattr("sys.argv", [
         "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
     ])
-    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DockerTarget("docker"))
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", interrupt_inspection)
     monkeypatch.setattr(
         "code_test_lab.cli.remove_container",
