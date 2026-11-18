@@ -136,8 +136,8 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         if token == "--env"
     ]
     assert forwarded_env == [
-        "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=",
-        "http_proxy=", "https_proxy=", "all_proxy=",
+        "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=",
+        "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy=",
         "PYTHONPYCACHEPREFIX=/tmp/pycache", "XDG_CACHE_HOME=/tmp/cache",
     ]
     assert policy["ci"]["permissions"] == {"contents": "read"}
@@ -179,7 +179,7 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     assert argv.count("--network") == 1
     assert "max-size=10m" in argv
     assert "max-file=3" in argv
-    for proxy in ("HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "http_proxy=", "https_proxy=", "all_proxy="):
+    for proxy in ("HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=", "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy="):
         assert proxy in argv
 
 
@@ -470,6 +470,9 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     assert scan_step["env"]["TRUSTED_BASE_SHA"] == (
         "${{ github.event.pull_request.base.sha || github.sha }}"
     )
+    assert scan_step["env"]["TRUSTED_HEAD_SHA"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
     assert command_tokens[command_tokens.index("--config") + 1] == "$trusted_config"
     assert (
         command_tokens[command_tokens.index("--gitleaks-ignore-path") + 1]
@@ -479,7 +482,7 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     assert "--redact" in command_tokens
     assert "--no-banner" in command_tokens
     assert (
-        '--log-opts=--all --full-history --diff-filter=uxdbT --diff-merges=first-parent'
+        '--log-opts=--all --full-history --diff-filter=uxdbT --diff-merges=first-parent $trusted_head'
         in command_tokens
     )
 
@@ -540,12 +543,16 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
         if step.get("name") == "Scan all commits using trusted base-branch rules"
     )
     assert "TRUSTED_BASE_SHA" in scan_step["env"]
+    assert "TRUSTED_HEAD_SHA" in scan_step["env"]
     assert "git worktree add" in scan_step["run"]
     assert "gitleaks git ." in scan_step["run"]
     assert '--config "$trusted_config"' in scan_step["run"]
     assert '--gitleaks-ignore-path "$trusted_ignore"' in scan_step["run"]
     assert "--ignore-gitleaks-allow" in scan_step["run"]
     assert "--diff-filter=uxdbT" in scan_step["run"]
+    actionlint_job = workflow["jobs"]["actionlint"]
+    lint_step = next(step for step in actionlint_job["steps"] if step.get("name", "").startswith("Lint workflows"))
+    assert "actionlint -config-file \"$RUNNER_TEMP/actionlint-empty.yml\" -color" in lint_step["run"]
 
     zizmor_job = workflow["jobs"]["zizmor"]
     audit = next(
@@ -563,6 +570,8 @@ def test_readme_warns_about_untrusted_docker_build_context() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "only for a trusted checkout" in readme
     assert "disposable builder with no proxy credentials" in readme
+    assert "returns `125`" in readme
+    assert "original Docker daemon" in readme
 
 
 def test_policy_rejects_duplicate_keys_inside_yaml_merge_operands(tmp_path: Path) -> None:
