@@ -251,4 +251,5 @@ async def test_cancel_rejects_invalid_run_identifier_before_request(monkeypatch)
     with pytest.raises(GitHubActionsError, match="invalid workflow run identifier"):
         await runtime.cancel("a" * 32, "main")
 
-    assert calls == [("GET", calls[0][1])]
+    assert len(calls) == 1
+    assert calls[0][0] == "GET"
