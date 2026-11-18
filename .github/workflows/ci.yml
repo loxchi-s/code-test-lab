@@ -22,6 +22,7 @@ jobs:
           persist-credentials: false
 
       - name: Build validation image
+        id: build-image
         run: docker build --pull --tag code-test-lab:${{ github.sha }} .
 
       - name: Run quality checks without network or credentials
@@ -47,6 +48,7 @@ jobs:
             bandit -r src'
 
       - name: Audit installed dependencies in a restricted network container
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
           docker run --rm \
             --network bridge \
