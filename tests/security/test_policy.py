@@ -570,7 +570,7 @@ def test_readme_warns_about_untrusted_docker_build_context() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "only for a trusted checkout" in readme
     assert "disposable builder with no proxy credentials" in readme
-    assert "returns `125`" in readme
+    assert "exit code `125`" in readme
     assert "original Docker daemon" in readme
 
 
