@@ -458,6 +458,23 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert '"sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low' in grype_scan_step["run"]
     assert not any("pip-audit" in run for run in run_steps)
     assert any("docker build" in run for run in run_steps)
+    smoke_step = next(
+        step for step in job["steps"]
+        if step.get("name") == "Smoke test restricted Python repository sandbox"
+    )
+    assert smoke_step["timeout-minutes"] == "5"
+    assert "test_pytest_is_loaded_from_trusted_image" in smoke_step["run"]
+    assert "test_target_mount_is_read_only" in smoke_step["run"]
+    assert "errno.EROFS" in smoke_step["run"]
+    assert "test_container_runs_as_non_root" in smoke_step["run"]
+    for isolation_flag in (
+        "--network none", "--read-only", "--pids-limit 256",
+        "--cap-drop ALL", "--security-opt no-new-privileges",
+        "--user 10001:10001", "--entrypoint python",
+    ):
+        assert isolation_flag in smoke_step["run"]
+    assert 'dst=/workspace/target,readonly' in smoke_step["run"]
+    assert '-I -c \'import sys;' in smoke_step["run"]
     quality_step = next(
         step for step in job["steps"]
         if step.get("name") == "Run quality checks without network or credentials"
