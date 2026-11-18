@@ -87,7 +87,7 @@ def build_docker_command(
         "--user", str(execution["user"]),
         "--entrypoint", command[0],
         image,
-        *command.slice(1),
+        *command[1:],
     ]
 
 
