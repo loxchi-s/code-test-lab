@@ -86,6 +86,10 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     while index < len(docker_options):
         option = docker_options[index]
         assert option in approved_options, f"unapproved Docker option: {option}"
+        if option == "--read-only":
+            option_values.setdefault(option, []).append("true")
+            index += 1
+            continue
         assert index + 1 < len(docker_options), f"missing value for {option}"
         option_values.setdefault(option, []).append(docker_options[index + 1])
         index += 2
