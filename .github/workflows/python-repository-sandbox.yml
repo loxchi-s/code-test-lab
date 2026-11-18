@@ -40,7 +40,7 @@ jobs:
             echo "::error::repository must use owner/repository format"
             exit 2
           fi
-          if [[ -z "$TARGET_REF" ]]; then
+          if [[ -z "${TARGET_REF//[[:space:]]/}" ]]; then
             echo "::error::ref must not be empty"
             exit 2
           fi
@@ -92,7 +92,7 @@ jobs:
           restore_workflow_commands() {
             local exit_code=$?
             trap - EXIT
-            printf '::%s::\n' "$marker"
+            printf '\n::%s::\n' "$marker"
             exit "$exit_code"
           }
           trap restore_workflow_commands EXIT
@@ -115,4 +115,4 @@ jobs:
             --user 10001:10001 \
             --entrypoint python \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))'
+            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))' 2>&1
