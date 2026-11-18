@@ -426,34 +426,29 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         step for step in job["steps"]
         if step.get("name") == "Generate SBOM from the image without executing it"
     )
-    requirements_step = next(
+    grype_install_step = next(
         step for step in job["steps"]
-        if step.get("name") == "Convert SBOM Python packages into pinned requirements data"
+        if step.get("name") == "Install trusted Grype vulnerability scanner"
     )
-    audit_setup_step = next(
+    grype_scan_step = next(
         step for step in job["steps"]
-        if step.get("name") == "Create isolated trusted pip-audit environment"
-    )
-    audit_step = next(
-        step for step in job["steps"]
-        if step.get("name") == "Audit image inventory with trusted pip-audit"
+        if step.get("name") == "Scan image SBOM with trusted Grype"
     )
     assert build_step["id"] == "build-image"
-    assert "sha256sum --check" in next(
-        step["run"] for step in job["steps"]
+    syft_install_step = next(
+        step for step in job["steps"]
         if step.get("name") == "Install trusted Syft image scanner"
     )
+    assert "syft_1.57.1_linux_amd64.tar.gz" in syft_install_step["run"]
+    assert "sha256sum --check" in syft_install_step["run"]
     assert "syft \"code-test-lab:${{ github.sha }}\"" in sbom_step["run"]
     assert "cyclonedx-json=" in sbom_step["run"]
-    assert "json.load" in requirements_step["run"]
-    assert "pkg:pypi/" in requirements_step["run"]
-    assert "multiple versions" in requirements_step["run"]
-    assert 'stream.write(f"{name}=={version}\\n")' in requirements_step["run"]
-    assert 'pip-audit==2.10.1' in audit_setup_step["run"]
-    assert 'python -I -m venv "$RUNNER_TEMP/pip-audit-venv"' in audit_setup_step["run"]
-    assert '"$RUNNER_TEMP/pip-audit-venv/bin/pip-audit"' in audit_step["run"]
-    assert "--no-deps --requirement" in audit_step["run"]
-    assert not any("--entrypoint pip-audit" in run for run in run_steps)
+    assert "grype_0.122.0_linux_amd64.tar.gz" in grype_install_step["run"]
+    assert "sha256sum --check" in grype_install_step["run"]
+    assert grype_scan_step["run"] == (
+        'grype "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low'
+    )
+    assert not any("pip-audit" in run for run in run_steps)
     assert any("docker build" in run for run in run_steps)
     quality_step = next(
         step for step in job["steps"]
