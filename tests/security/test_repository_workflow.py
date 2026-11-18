@@ -108,7 +108,7 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert build["working-directory"] == "sandbox-harness"
     assert shlex.split(build["run"]) == [
         "docker", "build", "--pull", "--tag",
-        "code-test-lab-python:${{ github.sha }}", ".",
+        "code-test-lab-python:${GITHUB_SHA}", ".",
     ]
 
     assert run_step["timeout-minutes"] == "20"
@@ -120,7 +120,7 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
 
     tokens = _docker_run_tokens(run_step["run"])
     options, image, command = _docker_options(tokens)
-    assert image == "code-test-lab-python:${{ github.sha }}"
+    assert image == "code-test-lab-python:${GITHUB_SHA}"
     assert options["--rm"] == ["true"]
     assert options["--read-only"] == ["true"]
     assert options["--network"] == ["none"]
