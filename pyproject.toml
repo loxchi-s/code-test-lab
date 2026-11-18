@@ -31,3 +31,32 @@ addopts = "-ra"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.importlinter]
+root_package = "code_test_lab"
+
+[[tool.importlinter.contracts]]
+name = "Policy must not depend on adapters or orchestration"
+type = "forbidden"
+source_modules = ["code_test_lab.policy"]
+forbidden_modules = [
+  "code_test_lab.cli",
+  "code_test_lab.docker",
+  "code_test_lab.isolation",
+]
+
+[[tool.importlinter.contracts]]
+name = "Docker adapter must not depend on policy or orchestration"
+type = "forbidden"
+source_modules = ["code_test_lab.docker"]
+forbidden_modules = [
+  "code_test_lab.cli",
+  "code_test_lab.policy",
+  "code_test_lab.isolation",
+]
+
+[[tool.importlinter.contracts]]
+name = "CLI orchestration must not depend on compatibility facade"
+type = "forbidden"
+source_modules = ["code_test_lab.cli"]
+forbidden_modules = ["code_test_lab.isolation"]
