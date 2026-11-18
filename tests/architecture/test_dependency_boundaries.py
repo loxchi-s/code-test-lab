@@ -46,7 +46,7 @@ def test_dependency_direction_respects_module_boundaries() -> None:
             f"{module} must not import {dependency}"
             for dependency in sorted(actual & forbidden)
         )
-    assert not violations, "\\n".join(violations)
+    assert not violations, "\n".join(violations)
 
 
 def test_package_has_no_circular_module_dependencies() -> None:
