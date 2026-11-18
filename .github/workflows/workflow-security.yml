@@ -82,7 +82,7 @@ jobs:
             --gitleaks-ignore-path "$trusted_ignore" \
             --ignore-gitleaks-allow \
             --redact --no-banner \
-            --log-opts="--all --full-history --diff-filter=uxdbT --diff-merges=first-parent $trusted_head"
+            --log-opts="--all --full-history --diff-filter=uxdb --diff-merges=first-parent $trusted_head"
 
   zizmor:
     name: GitHub Actions security audit
