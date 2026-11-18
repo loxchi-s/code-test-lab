@@ -7,6 +7,7 @@ import subprocess  # nosec B404 - Docker is invoked with an argv list, never thr
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 from .docker import build_docker_command, remove_container, resolve_image_id
 from .policy import PolicyError, load_execution_policy
@@ -22,7 +23,7 @@ def main() -> int:
 
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     container_name: str | None = None
-    execution: dict[str, object] | None = None
+    execution: dict[str, Any] | None = None
     try:
         execution = load_execution_policy(args.policy)
         image_id = resolve_image_id(args.image)
