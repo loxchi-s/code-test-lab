@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
+import subprocess  # nosec B404 - Docker is invoked with an argv list, never through a shell.
 import sys
 from pathlib import Path
 from typing import Any
@@ -59,20 +59,29 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         r"\d+:\d+", execution["user"]
     ):
         raise PolicyError("Execution user must be a numeric UID:GID pair")
-    if not isinstance(execution["memory"], str) or not re.fullmatch(
-        r"\d+[mMgG]", execution["memory"]
-    ):
-        raise PolicyError("Execution memory must be a positive Docker memory value")
 
-    for key in ("cpus", "pids_limit", "timeout_minutes"):
+    for key in ("memory", "tmpfs_size"):
         value = execution[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-            raise PolicyError(f"Execution setting {key!r} must be positive")
+        if (
+            not isinstance(value, str)
+            or not re.fullmatch(r"\d+[mMgG]", value)
+            or int(value[:-1]) <= 0
+        ):
+            raise PolicyError(f"Execution setting {key!r} must be a positive size")
 
-    if not isinstance(execution["tmpfs_size"], str) or not re.fullmatch(
-        r"\d+[mMgG]", execution["tmpfs_size"]
+    cpus = execution["cpus"]
+    if (
+        isinstance(cpus, bool)
+        or not isinstance(cpus, (int, float))
+        or not 0 < cpus < float("inf")
     ):
-        raise PolicyError("Execution tmpfs_size must be a positive size")
+        raise PolicyError("Execution setting 'cpus' must be a finite positive number")
+
+    for key in ("pids_limit", "timeout_minutes"):
+        value = execution[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise PolicyError(f"Execution setting {key!r} must be a positive integer")
+
     if execution["drop_capabilities"] != "all":
         raise PolicyError("All Linux capabilities must be dropped")
     if execution["no_new_privileges"] is not True:
@@ -95,8 +104,8 @@ def build_docker_command(
     image: str, command: list[str], execution: dict[str, Any]
 ) -> list[str]:
     """Build an argv vector; never interpolate commands through a shell."""
-    if not image.strip():
-        raise ValueError("Docker image must not be empty")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
+        raise ValueError("Docker image reference contains unsupported characters")
     if not command or any(not item for item in command):
         raise ValueError("Container command must contain non-empty arguments")
 
@@ -108,7 +117,7 @@ def build_docker_command(
         "none",
         "--read-only",
         "--tmpfs",
-        f"/tmp:rw,noexec,nosuid,size={execution['tmpfs_size']}",
+        f"/tmp:rw,noexec,nosuid,size={execution['tmpfs_size']}",  # nosec B108 - container-only tmpfs.
         "--memory",
         str(execution["memory"]),
         "--cpus",
@@ -137,9 +146,11 @@ def main() -> int:
     try:
         execution = load_execution_policy(args.policy)
         docker_argv = build_docker_command(args.image, command, execution)
+        # nosec B603 - argv-only invocation; workflow commands are fixed and container limits apply.
         completed = subprocess.run(
             docker_argv,
             check=False,
+            shell=False,
             timeout=float(execution["timeout_minutes"]) * 60,
         )
         return completed.returncode

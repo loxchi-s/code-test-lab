@@ -27,7 +27,7 @@ automatically appear in GitHub; changes must be committed or uploaded through Gi
 - Python 3.12+
 - Git
 - Optional: uv
-- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit
+- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit, PyYAML, types-PyYAML
 - Docker is required only by the GitHub-hosted CI runner, not by the interactive Sandbox.
 
 ## Setup
@@ -63,14 +63,31 @@ pip-audit
 bandit -r src
 ```
 
+## Policy-driven container execution
+
+`config/test-policy.yml` is the single source of truth for the container isolation settings.
+The policy runner validates it and constructs the Docker argument vector; the workflow does not
+duplicate Docker security flags.
+
+```bash
+python -m code_test_lab.isolation \
+  --policy config/test-policy.yml \
+  --image code-test-lab:local \
+  -- python -m pytest -q
+```
+
+The runner passes arguments directly without a shell and enforces the policy's per-command timeout.
+The GitHub Actions job timeout is an outer CI safety bound. The test container receives no GitHub
+credentials or repository secrets.
+
 ## Repository structure
 
 ```text
 .github/workflows/ci.yml   GitHub Actions quality and Docker validation
-config/test-policy.yml     Resource and isolation policy for test execution
+config/test-policy.yml     Executable resource and isolation policy
 scripts/                   Reusable local check entry points
-src/code_test_lab/         Small Python package for future test-harness primitives
-tests/security/            Regression tests for CI isolation policy
+src/code_test_lab/         Policy validation and isolated Docker runner
+tests/security/            Regression tests for policy enforcement
 ```
 
 ## Security contract

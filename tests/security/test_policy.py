@@ -51,6 +51,21 @@ def test_policy_generates_the_restricted_docker_argv() -> None:
     assert argv.count("docker") == 1
 
 
+def test_container_command_is_passed_as_distinct_argv_items() -> None:
+    execution = load_execution_policy(POLICY_PATH)
+    marker = "test; touch /tmp/should-not-run"
+    argv = build_docker_command("code-test-lab:test", ["python", "-c", marker], execution)
+
+    assert argv[-3:] == ["python", "-c", marker]
+
+
+def test_image_reference_rejects_option_injection() -> None:
+    execution = load_execution_policy(POLICY_PATH)
+
+    with pytest.raises(ValueError, match="image reference"):
+        build_docker_command("--privileged", ["python", "-m", "pytest"], execution)
+
+
 def test_workflow_delegates_docker_execution_to_policy_runner() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
     assert workflow.count("python -m code_test_lab.isolation") == 2
