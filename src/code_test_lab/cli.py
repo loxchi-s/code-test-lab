@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .docker import (
+    DockerTarget,
     build_docker_command,
     remove_container,
     resolve_docker_target,
@@ -30,7 +31,7 @@ def main() -> int:
     container_name: str | None = None
     container_started = False
     execution: dict[str, Any] | None = None
-    docker_target = None
+    docker_target: DockerTarget | None = None
     try:
         execution = load_execution_policy(args.policy)
         docker_target = resolve_docker_target()
@@ -63,7 +64,9 @@ def main() -> int:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
-        cleanup_ok = container_name is not None and remove_container(container_name, docker_target)
+        cleanup_ok = (
+            container_name is not None and remove_container(container_name, docker_target)
+        )
         if not cleanup_ok:
             print(
                 "Execution timed out and cleanup could not be confirmed; "
