@@ -1,81 +1,91 @@
 # code-test-lab
 
-A private, sandbox-first development and testing repository. ChatGPT uses its isolated
-Sandbox environment for interactive code inspection, editing, and local test execution.
-GitHub Integration manages repository branches, commits, and pull requests. GitHub Actions
-runs repeatable CI checks on pushes and pull requests.
+A sandbox-first development and test harness. ChatGPT uses its isolated Sandbox for interactive
+code inspection, edits, and local test execution. GitHub Integration manages repository changes.
+GitHub Actions is the repeatable CI authority and runs the same checks in an isolated Docker
+container.
 
-No MCP server, MCP client, or MCP transport is part of this architecture.
+No MCP server, MCP client, MCP transport, or remote execution service is part of this repository.
 
-## Architecture
+## Execution model
 
 `ChatGPT Chat -> ChatGPT Sandbox -> GitHub Integration -> GitHub Actions -> ChatGPT Chat`
 
-Responsibilities:
+- **Sandbox:** ephemeral interactive workspace for cloning/checking out this repository,
+  installing dependencies, editing code, and running checks.
+- **GitHub Integration:** reads files and creates commits, branches, and pull requests.
+- **GitHub Actions:** validates pushed commits and pull requests. Docker runs tests with no network,
+  read-only root filesystem, non-root UID, bounded memory/CPU/PIDs, dropped capabilities, and
+  no-new-privileges.
+- **Chat:** receives test output, CI status, commit references, and a concise evidence-based report.
 
-- **ChatGPT Sandbox:** isolated workspace for code inspection, editing, dependency installation,
-  unit tests, lint, static analysis, and security checks.
-- **GitHub Integration:** repository reads/writes, branch management, commits, and pull requests.
-- **GitHub Actions:** repeatable repository CI, Docker-based isolated test execution, logs,
-  and workflow artifacts.
-- **Chat:** task intake, review feedback, and evidence-based status reporting.
+The Sandbox and GitHub Actions runner are separate environments. Files created in Sandbox do not
+automatically appear in GitHub; changes must be committed or uploaded through GitHub Integration.
 
-The Sandbox is separate from the GitHub Actions runner. Changes must be committed or uploaded
-to GitHub through the GitHub integration; Sandbox filesystem changes do not automatically
-modify the repository.
+## Requirements
 
-## Development environment
-
-- Python 3.12
+- Python 3.12+
 - Git
-- uv (recommended) or pip
-- pytest and pytest-asyncio
-- Ruff
-- mypy
-- pip-audit
-- Bandit
-- Docker is used by GitHub Actions; it is not required inside the ChatGPT Sandbox.
+- Optional: uv
+- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit
+- Docker is required only by the GitHub-hosted CI runner, not by the interactive Sandbox.
 
-Install dependencies:
+## Setup
 
 ```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Run checks:
+Or use uv:
 
 ```bash
-ruff check src tests
+uv sync --extra dev
+```
+
+## Checks
+
+```bash
+./scripts/test.sh
+./scripts/lint.sh
+./scripts/security.sh
+```
+
+Individual commands:
+
+```bash
 python -m pytest -q
-python -m compileall -q src
+ruff check src tests
 mypy src
 pip-audit
 bandit -r src
 ```
 
-## GitHub Actions
+## Repository structure
 
-The `.github/workflows/ci.yml` workflow runs on pull requests and pushes to configured
-branches. It performs quality checks and executes tests in a restricted Docker container.
+```text
+.github/workflows/ci.yml   GitHub Actions quality and Docker validation
+config/test-policy.yml     Resource and isolation policy for test execution
+scripts/                   Reusable local check entry points
+src/code_test_lab/         Small Python package for future test-harness primitives
+tests/security/            Regression tests for CI isolation policy
+```
 
-The container uses a non-root UID, read-only root filesystem, no network, bounded memory,
-CPU and process count, dropped Linux capabilities, and no-new-privileges.
+## Security contract
 
-## Architecture and security rules
+1. Treat repository code and pull-request changes as untrusted.
+2. Never expose GitHub credentials or secrets to test containers.
+3. Keep network disabled for tests unless a separately reviewed test requires it.
+4. Bound CPU, memory, process count, and execution duration.
+5. Keep the container non-root, read-only, and without Linux capabilities.
+6. Grant CI only the permissions it needs; current workflow uses `contents: read`.
+7. Do not execute untrusted pull-request code in a privileged `pull_request_target` workflow.
+8. Keep unit tests runnable without a database or network.
 
-1. Keep domain and application logic independent of GitHub, Docker, ChatGPT, and UI frameworks.
-2. Put external effects behind explicit ports/adapters when they are part of the application.
-3. Keep unit tests runnable without network access or a database.
-4. Treat repository code under test as untrusted input.
-5. Do not pass GitHub credentials or secrets into test containers.
-6. Use a dedicated branch and pull request; do not push directly to `main`.
-7. Report Designed, Implemented, Tested, and Validated as separate states. Never claim a check
-   passed without a corresponding test or CI result.
+## Status semantics
 
-## Current limitations
-
-- ChatGPT Sandbox provisioning is separate from this repository and depends on account compute
-  quota and platform capacity.
-- This repository does not create or host a persistent remote execution service.
-- GitHub Actions is the repeatable CI environment; ChatGPT Sandbox is the interactive
-  development environment.
+Report Designed, Implemented, Tested, and Validated separately. A green GitHub Actions run
+validates only the checks executed by that workflow; it does not prove Sandbox provisioning or
+interactive Chat-to-Sandbox connectivity.
