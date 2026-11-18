@@ -28,8 +28,10 @@ jobs:
             | sha256sum --check
           tar -xzf actionlint.tar.gz actionlint
           sudo install actionlint /usr/local/bin/actionlint
-      - name: Lint workflows
-        run: actionlint -color
+      - name: Lint workflows with trusted empty configuration
+        run: |
+          : > "$RUNNER_TEMP/actionlint-empty.yml"
+          actionlint -config-file "$RUNNER_TEMP/actionlint-empty.yml" -color
 
   gitleaks:
     name: Full-history secret scan
@@ -54,8 +56,10 @@ jobs:
       - name: Scan all commits using trusted base-branch rules
         env:
           TRUSTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          TRUSTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           trusted_base="$TRUSTED_BASE_SHA"
+          trusted_head="$TRUSTED_HEAD_SHA"
           trusted_dir="$RUNNER_TEMP/trusted-gitleaks"
           git worktree add --detach "$trusted_dir" "$trusted_base"
 
@@ -78,7 +82,7 @@ jobs:
             --gitleaks-ignore-path "$trusted_ignore" \
             --ignore-gitleaks-allow \
             --redact --no-banner \
-            --log-opts="--all --full-history --diff-filter=uxdbT --diff-merges=first-parent"
+            --log-opts="--all --full-history --diff-filter=uxdbT --diff-merges=first-parent $trusted_head"
 
   zizmor:
     name: GitHub Actions security audit
