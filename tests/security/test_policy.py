@@ -1,6 +1,7 @@
 import json
 import re
 import shlex
+import signal
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 
@@ -539,6 +540,8 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Run quality checks without network or credentials"
     )
     assert _is_single_fail_fast_docker_run(quality_step["run"])
+    assert quality_step.get("continue-on-error", "false") == "false"
+    assert job.get("continue-on-error", "false") == "false"
     assert any("docker run" in run and "pytest" in run for run in run_steps)
     assert not any("pip install -e" in run for run in run_steps)
 
@@ -645,6 +648,43 @@ def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, ca
     monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: False)
     assert main() == 125
     assert "cleanup could not be confirmed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("cleanup_result", "expected"), [(True, 143), (False, 125)])
+def test_main_cleans_up_after_sigterm(
+    monkeypatch: pytest.MonkeyPatch, cleanup_result: bool, expected: int,
+) -> None:
+    calls: list[str] = []
+
+    def sigterm_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        signal.raise_signal(signal.SIGTERM)
+        raise AssertionError("SIGTERM handler should interrupt the Docker client call")
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", IMAGE_ID,
+        "--", "python", "-m", "pytest",
+    ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.subprocess.run", sigterm_run)
+    monkeypatch.setattr(
+        "code_test_lab.cli.remove_container",
+        lambda name, target=None: calls.append(name) or cleanup_result,
+    )
+    assert main() == expected
+    assert len(calls) == 1
+
+
+def test_policy_rejects_malformed_boolean_scalar(tmp_path: Path) -> None:
+    malformed = tmp_path / "malformed-policy.yml"
+    text = POLICY_PATH.read_text(encoding="utf-8")
+    assert "no_new_privileges: true" in text
+    malformed.write_text(
+        text.replace("no_new_privileges: true", "no_new_privileges: !!bool tru", 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(PolicyError, match="Unable to load policy"):
+        load_execution_policy(malformed)
 
 
 def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
