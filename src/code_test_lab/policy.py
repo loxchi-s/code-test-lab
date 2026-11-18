@@ -14,6 +14,7 @@ _REQUIRED_EXECUTION_KEYS = {
     "drop_capabilities", "no_new_privileges",
 }
 _MAX_MEMORY_MIB = 4096
+_MIN_DOCKER_MEMORY_MIB = 6
 _MAX_TMPFS_MIB = 512
 _MAX_CPUS = 4
 _MAX_PIDS = 512
@@ -25,22 +26,53 @@ class PolicyError(ValueError):
     """Raised when the isolation policy is invalid or unsafe."""
 
 
-def _size_in_mib(value: object, *, key: str, maximum: int) -> int:
-    """Parse a positive Docker size and enforce its upper bound."""
-    if not isinstance(value, str) or not re.fullmatch(r"\d+[mMgG]", value):
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate mapping keys."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        self.flatten_mapping(node)
+        mapping: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in mapping
+            except TypeError as exc:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping", node.start_mark,
+                    "found an unhashable key", key_node.start_mark,
+                ) from exc
+            if duplicate:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping", node.start_mark,
+                    f"found duplicate key {key!r}", key_node.start_mark,
+                )
+            mapping[key] = self.construct_object(value_node, deep=deep)
+        return mapping
+
+
+def _size_in_mib(
+    value: object, *, key: str, maximum: int, minimum: int = 1,
+) -> int:
+    """Parse a positive Docker size and enforce its lower and upper bounds."""
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]+[mMgG]", value):
         raise PolicyError(f"Execution setting {key!r} must be a positive MiB/GiB size")
     amount = int(value[:-1])
     multiplier = 1024 if value[-1].lower() == "g" else 1
     size_mib = amount * multiplier
-    if size_mib <= 0 or size_mib > maximum:
-        raise PolicyError(f"Execution setting {key!r} exceeds the allowed limit")
+    if size_mib < minimum or size_mib > maximum:
+        raise PolicyError(
+            f"Execution setting {key!r} must be in range {minimum}..{maximum} MiB"
+        )
     return size_mib
 
 
 def load_execution_policy(path: Path) -> dict[str, Any]:
     """Load and validate the policy without executing external commands."""
     try:
-        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        document = yaml.load(
+            path.read_text(encoding="utf-8"),
+            Loader=_UniqueKeySafeLoader,
+        )
     except (OSError, yaml.YAMLError) as exc:
         raise PolicyError(f"Unable to load policy: {exc}") from exc
 
@@ -63,21 +95,29 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Only filesystem: read-only is permitted")
 
     user = execution["user"]
-    if not isinstance(user, str) or not re.fullmatch(r"\d+:\d+", user):
-        raise PolicyError("Execution user must be a numeric UID:GID pair")
+    if not isinstance(user, str) or not re.fullmatch(r"[0-9]+:[0-9]+", user):
+        raise PolicyError("Execution user must be an ASCII numeric UID:GID pair")
     uid, gid = (int(part) for part in user.split(":"))
     if not 1 <= uid <= _MAX_UID_GID or not 1 <= gid <= _MAX_UID_GID:
         raise PolicyError("Execution UID and GID must be non-root values in range 1..65535")
 
-    _size_in_mib(execution["memory"], key="memory", maximum=_MAX_MEMORY_MIB)
+    _size_in_mib(
+        execution["memory"], key="memory",
+        maximum=_MAX_MEMORY_MIB, minimum=_MIN_DOCKER_MEMORY_MIB,
+    )
     _size_in_mib(execution["tmpfs_size"], key="tmpfs_size", maximum=_MAX_TMPFS_MIB)
+
     cpus = execution["cpus"]
     if (
         isinstance(cpus, bool)
         or not isinstance(cpus, (int, float))
         or not 0 < cpus <= _MAX_CPUS
+        or not (float(cpus) * 1_000_000_000).is_integer()
     ):
-        raise PolicyError(f"Execution setting 'cpus' must be in range (0, {_MAX_CPUS}]")
+        raise PolicyError(
+            f"Execution setting 'cpus' must be in range (0, {_MAX_CPUS}] "
+            "and representable as whole NanoCPUs"
+        )
 
     for key, maximum in (
         ("pids_limit", _MAX_PIDS),
