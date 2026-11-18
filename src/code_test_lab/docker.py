@@ -94,7 +94,7 @@ def _require_pid_limit_support(target: DockerTarget) -> None:
 
 def resolve_image_id(image: str, docker_target: DockerTarget | None = None) -> str:
     """Resolve a local image to an immutable ID and reject image-declared volumes."""
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}(?:@sha256:[A-Fa-f0-9]{64})?", image):
         raise ValueError("Docker image reference contains unsupported characters")
     target = docker_target or resolve_docker_target()
     _require_pid_limit_support(target)
