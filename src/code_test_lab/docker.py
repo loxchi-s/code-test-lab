@@ -30,12 +30,12 @@ def resolve_docker_target() -> DockerTarget:
     if docker_executable is None:
         raise FileNotFoundError("docker executable not found")
 
-    context = os.environ.get("DOCKER_CONTEXT")
     host = os.environ.get("DOCKER_HOST")
-    if context:
-        return DockerTarget(docker_executable, ("--context", context))
+    context = os.environ.get("DOCKER_CONTEXT")
     if host:
         return DockerTarget(docker_executable, ("--host", host))
+    if context:
+        return DockerTarget(docker_executable, ("--context", context))
 
     try:
         result = subprocess.run(  # nosec B603 - fixed Docker subcommand, argv only, and shell=False.
@@ -54,12 +54,12 @@ def resolve_docker_target() -> DockerTarget:
 
 
 def _require_pid_limit_support(target: DockerTarget) -> None:
-    """Fail closed when the selected daemon reports that PID limits are unsupported."""
+    """Fail closed unless the daemon confirms all resource-limit capabilities."""
     try:
         result = subprocess.run(  # nosec B603 - Docker executable and subcommand are fixed; target is argv-only.
             [
                 target.executable, *target.global_args,
-                "info", "--format", "{{json .Warnings}}",
+                "info", "--format", "{{json .}}",
             ],
             check=False, shell=False, timeout=10, capture_output=True, text=True,
         )
@@ -71,15 +71,25 @@ def _require_pid_limit_support(target: DockerTarget) -> None:
             f"Docker daemon capability inspection failed: {detail or result.returncode}"
         )
     try:
-        warnings = json.loads(result.stdout or "null")
+        info = json.loads(result.stdout or "null")
     except json.JSONDecodeError as exc:
         raise ValueError("Docker daemon returned invalid capability metadata") from exc
+    if not isinstance(info, dict):
+        raise ValueError("Docker daemon returned an invalid capability object")
+    warnings = info.get("Warnings")
     if warnings is None:
         warnings = []
     if not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings):
         raise ValueError("Docker daemon returned an invalid warnings list")
     if any("pids limit" in warning.casefold() for warning in warnings):
         raise ValueError("Selected Docker daemon does not support enforcing PID limits")
+    for field, label in (
+        ("PidsLimit", "PID limits"),
+        ("MemoryLimit", "memory limits"),
+        ("SwapLimit", "swap limits"),
+    ):
+        if info.get(field) is not True:
+            raise ValueError(f"Selected Docker daemon does not report support for {label}")
 
 
 def resolve_image_id(image: str, docker_target: DockerTarget | None = None) -> str:
@@ -176,6 +186,13 @@ def remove_container(
         raise ValueError("Container name must be a generated code-test-lab identifier")
     try:
         target = docker_target or resolve_docker_target()
+    except ValueError as exc:
+        print(
+            f"Cleanup failed: unable to resolve Docker target for {container_name}: {exc}",
+            file=sys.stderr,
+        )
+        return False
+    try:
         result = subprocess.run(  # nosec B603 - fixed cleanup argv and validated generated container name.
             [
                 target.executable, *target.global_args,
