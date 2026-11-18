@@ -471,7 +471,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     run_steps = [step.get("run", "") for step in job["steps"]]
     pid_preflight_step = next(
         step for step in job["steps"]
-        if step.get("name") == "Verify Docker daemon PID limit support"
+        if step.get("name") == "Verify Docker daemon resource-limit support"
     )
     assert pid_preflight_step["timeout-minutes"] == "2"
     assert pid_preflight_step["id"] == "docker-capabilities"
