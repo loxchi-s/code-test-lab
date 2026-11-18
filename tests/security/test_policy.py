@@ -501,6 +501,8 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Install trusted Syft image scanner"
     )
     assert "syft_1.57.1_linux_amd64.tar.gz" in syft_install_step["run"]
+    assert 'mktemp -d "$RUNNER_TEMP/syft.' in syft_install_step["run"]
+    assert '--output "$scanner_dir/syft.tar.gz"' in syft_install_step["run"]
     assert "sha256sum --check" in syft_install_step["run"]
     assert 'syft --config "$RUNNER_TEMP/syft-empty.yaml"' in sbom_step["run"]
     assert 'cd "$RUNNER_TEMP"' in sbom_step["run"]
@@ -511,6 +513,8 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'sbom["components"] = python_components' in python_sbom_step["run"]
     assert 'sbom.pop("dependencies", None)' in python_sbom_step["run"]
     assert "grype_0.122.0_linux_amd64.tar.gz" in grype_install_step["run"]
+    assert 'mktemp -d "$RUNNER_TEMP/grype.' in grype_install_step["run"]
+    assert '--output "$scanner_dir/grype.tar.gz"' in grype_install_step["run"]
     assert "sha256sum --check" in grype_install_step["run"]
     assert 'grype --config "$RUNNER_TEMP/grype-empty.yaml"' in grype_scan_step["run"]
     assert 'cd "$RUNNER_TEMP"' in grype_scan_step["run"]
@@ -522,6 +526,15 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Smoke test restricted Python repository sandbox"
     )
     assert smoke_step["timeout-minutes"] == "5"
+    assert '--name "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}"' in smoke_step["run"]
+    cleanup_step = next(
+        step for step in job["steps"] if step.get("name") == "Remove smoke container"
+    )
+    assert cleanup_step["if"] == "${{ always() }}"
+    assert cleanup_step["env"]["SANDBOX_CONTAINER"] == (
+        "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert 'docker rm -f "$SANDBOX_CONTAINER" || true' == cleanup_step["run"]
     assert "steps.docker-capabilities.outcome == 'success'" in smoke_step["if"]
     assert "test_pytest_is_loaded_from_trusted_image" in smoke_step["run"]
     assert "test_target_mount_is_read_only" in smoke_step["run"]
