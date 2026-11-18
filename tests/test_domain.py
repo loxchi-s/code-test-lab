@@ -1,11 +1,11 @@
 import pytest
 
-from container_execution.domain.execution_result import ExecutionResult
 from container_execution.domain.execution import (
     ExecutionRequest,
     ExecutionStatus,
     ExecutionTarget,
 )
+from container_execution.domain.execution_result import ExecutionResult
 
 
 def test_execution_request_accepts_valid_values() -> None:
@@ -22,7 +22,8 @@ def test_execution_request_rejects_unsafe_refs(ref: str) -> None:
 def test_status_values_are_stable() -> None:
     assert ExecutionStatus.COMPLETED.value == "completed"
 
-def test_execution_result_accepts_bounded_success_output() -> None:
+
+def test_execution_result_accepts_valid_output() -> None:
     result = ExecutionResult(
         "b" * 32,
         ExecutionStatus.COMPLETED,
