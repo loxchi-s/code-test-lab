@@ -27,10 +27,13 @@ automatically appear in GitHub; changes must be committed or uploaded through Gi
 - Python 3.12+
 - Git
 - Optional: uv
-- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit, PyYAML, types-PyYAML
-- Docker is required only by the GitHub-hosted CI runner, not by the interactive Sandbox.
+- Runtime dependency: PyYAML
+- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit, types-PyYAML
+- Docker is required only by the local policy-driven container runner and GitHub-hosted CI.
 
 ## Setup
+
+Using venv:
 
 ```bash
 python -m venv .venv
@@ -39,11 +42,14 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Or use uv:
+Using uv:
 
 ```bash
 uv sync --extra dev
+. .venv/bin/activate
 ```
+
+Activate the environment in each new shell before running the checks.
 
 ## Checks
 
@@ -80,7 +86,10 @@ The job uses read-only repository permissions and does not require repository wr
 The policy runner validates it and constructs the Docker argument vector; the workflow does not
 duplicate Docker security flags.
 
+Build the local image first (Docker must be available):
+
 ```bash
+docker build --tag code-test-lab:local .
 python -m code_test_lab.isolation \
   --policy config/test-policy.yml \
   --image code-test-lab:local \
@@ -88,8 +97,8 @@ python -m code_test_lab.isolation \
 ```
 
 The runner passes arguments directly without a shell and enforces the policy's per-command timeout.
-The GitHub Actions job timeout is an outer CI safety bound. The test container receives no GitHub
-credentials or repository secrets.
+Ordinary unit tests and lint checks do not require Docker. The GitHub Actions job timeout is an
+outer CI safety bound. The test container receives no GitHub credentials or repository secrets.
 
 ## Repository structure
 
@@ -105,11 +114,15 @@ tests/architecture/        Static dependency-boundary and cycle checks
 ## Security contract
 
 1. Treat repository code and pull-request changes as untrusted.
-2. The Docker policy is defense-in-depth for test processes, not a security boundary against a malicious PR author: the workflow and policy runner are themselves versioned in the PR and can be modified by that PR.
-3. For adversarial-contributor threat models, enforce a trusted workflow from a protected base branch or a separately governed reusable workflow, require appropriate review/approval, and keep secrets unavailable to pull-request jobs.
+2. The Docker policy is defense-in-depth for test processes, not a security boundary against a
+   malicious PR author: the workflow, Dockerfile, and policy runner are themselves versioned in the
+   PR and can be modified by that PR.
+3. For adversarial-contributor threat models, enforce a trusted workflow from a protected base
+   branch or a separately governed reusable workflow, require appropriate review/approval, and
+   keep secrets unavailable to pull-request jobs.
 4. Never expose GitHub credentials or secrets to test containers.
 5. Keep network disabled for tests unless a separately reviewed test requires it.
-6. Bound CPU, memory, swap, process count, and execution duration.
+6. Bound CPU, memory, swap, process count, log storage, and execution duration.
 7. Keep the container non-root, read-only, and without Linux capabilities.
 8. Grant CI only the permissions it needs; current workflow uses `contents: read`.
 9. Do not execute untrusted pull-request code in a privileged `pull_request_target` workflow.
