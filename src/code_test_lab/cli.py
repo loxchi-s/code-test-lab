@@ -42,11 +42,11 @@ def main() -> int:
             and container_name is not None
             and not remove_container(container_name)
         ):
-                print(
-                    "Docker client failed and cleanup could not be confirmed; "
-                    "the container may still be running.",
-                    file=sys.stderr,
-                )
+            print(
+                "Docker client failed and cleanup could not be confirmed; "
+                "the container may still be running.",
+                file=sys.stderr,
+            )
         return completed.returncode
     except PolicyError as exc:
         print(f"Isolation policy error: {exc}", file=sys.stderr)
