@@ -22,7 +22,7 @@ def resolve_image_id(image: str) -> str:
     if docker_executable is None:
         raise FileNotFoundError("docker executable not found")
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - executable and inspect argv are fixed; image is validated.
             [docker_executable, "image", "inspect", "--format", "{{json .}}", image],
             check=False, shell=False, timeout=10, capture_output=True, text=True,
         )
@@ -102,7 +102,7 @@ def remove_container(container_name: str) -> bool:
         )
         return False
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - fixed cleanup argv and validated generated container name.
             [docker_executable, "rm", "--force", container_name],
             check=False, shell=False, timeout=10, capture_output=True, text=True,
         )
