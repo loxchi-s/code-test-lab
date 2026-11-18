@@ -21,6 +21,10 @@ No MCP server, MCP client, MCP transport, or remote execution service is part of
 
 The Sandbox and GitHub Actions runner are separate environments. Files created in Sandbox do not
 automatically appear in GitHub; changes must be committed or uploaded through GitHub Integration.
+CI also runs a restricted-container smoke test against a generated fixture. It verifies that pytest
+is imported from the harness image before target code is added to the import path, that the target
+mount is read-only, and that the test process runs as the configured non-root UID. The manual
+workflow's external checkout and dispatch path remains a separate operation.
 
 ## Requirements
 
