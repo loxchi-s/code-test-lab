@@ -23,6 +23,7 @@ def main() -> int:
 
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     container_name: str | None = None
+    container_started = False
     execution: dict[str, Any] | None = None
     try:
         execution = load_execution_policy(args.policy)
@@ -31,6 +32,7 @@ def main() -> int:
         docker_argv = build_docker_command(
             image_id, command, execution, container_name=container_name,
         )
+        container_started = True
         completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
             docker_argv, check=False, shell=False,
             timeout=float(execution["timeout_minutes"]) * 60,
@@ -55,6 +57,8 @@ def main() -> int:
         print(f"Container command exceeded {timeout_minutes} minutes", file=sys.stderr)
         return 124
     except KeyboardInterrupt:
+        if not container_started:
+            return 130
         cleanup_ok = container_name is not None and remove_container(container_name)
         if not cleanup_ok:
             print(
