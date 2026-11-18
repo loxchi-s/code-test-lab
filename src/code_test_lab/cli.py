@@ -51,7 +51,7 @@ def main() -> int:
     except PolicyError as exc:
         print(f"Isolation policy error: {exc}", file=sys.stderr)
         return 2
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
