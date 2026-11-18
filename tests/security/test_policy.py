@@ -145,7 +145,7 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     for flag, value in expected_pairs.items():
         assert argv.count(flag) == 1
         assert argv[argv.index(flag) + 1] == value
-    assert argv[-4:] == ["python", "-m", "pytest", "-q"]
+    assert argv[-5:] == [IMAGE_ID, "python", "-m", "pytest", "-q"]
     assert argv.count("--read-only") == 1
     assert argv.count("--network") == 1
     assert "max-size=10m" in argv
@@ -161,7 +161,7 @@ def test_container_command_is_passed_as_distinct_argv_items() -> None:
         IMAGE_ID, ["python", "-c", marker], execution,
         container_name=TEST_CONTAINER_NAME,
     )
-    assert argv[-3:] == ["python", "-c", marker]
+    assert argv[-4:] == [IMAGE_ID, "python", "-c", marker]
 
 
 def test_container_command_allows_empty_non_executable_operands() -> None:
@@ -170,7 +170,7 @@ def test_container_command_allows_empty_non_executable_operands() -> None:
         IMAGE_ID, ["printf", "%s", ""], execution,
         container_name=TEST_CONTAINER_NAME,
     )
-    assert argv[-3:] == ["printf", "%s", ""]
+    assert argv[-4:] == [IMAGE_ID, "printf", "%s", ""]
 
 
 def test_image_reference_rejects_option_injection() -> None:
@@ -388,6 +388,7 @@ def test_workflow_credential_guard_detects_bracket_and_dot_contexts() -> None:
     assert _contains_untrusted_credential("${{ secrets['TOKEN'] }}")
     assert _contains_untrusted_credential("${{ secrets.TOKEN }}")
     assert _contains_untrusted_credential("${{ github.token }}")
+    assert _contains_untrusted_credential("${{ github['token'] }}")
     assert not _contains_untrusted_credential("${{ github.sha }}")
 
 
@@ -588,7 +589,7 @@ def test_docker_command_overrides_image_entrypoint_and_preserves_empty_operands(
         container_name=TEST_CONTAINER_NAME,
     )
     assert command[command.index("--entrypoint") + 1] == "printf"
-    assert command[-2:] == ["%s", ""]
+    assert command[-3:] == [IMAGE_ID, "%s", ""]
 
 
 @pytest.mark.parametrize("metadata", [None, [], {"Config": None}, {"Config": []}])
