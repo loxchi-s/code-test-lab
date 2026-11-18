@@ -32,7 +32,7 @@ def test_external_checkout_uses_fixed_workspace_and_does_not_persist_credentials
     assert target_checkout["with"]["ref"] == "${{ inputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
-    assert target_checkout["with"]["token"] == "${{ secrets.TARGET_REPO_READ_TOKEN || github.token }}"
+    assert target_checkout["with"]["token"] == (\n        "${{ secrets.TARGET_REPO_READ_TOKEN || github.token }}"\n    )
 
 
 def test_target_code_runs_only_in_restricted_docker_container() -> None:
@@ -46,7 +46,7 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     )
     command = run_step["run"]
 
-    assert "working-directory" == build["working-directory"] or build["working-directory"] == "sandbox-harness"
+    assert build["working-directory"] == "sandbox-harness"
     assert "docker build" in build["run"]
     for required in (
         "--network none",
