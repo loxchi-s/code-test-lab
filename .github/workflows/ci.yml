@@ -96,7 +96,11 @@ jobs:
                   or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+!_-]{0,99}", version)
               ):
                   raise SystemExit("SBOM contains an invalid Python package identity")
-              packages[name.casefold()] = (name, version)
+              key = name.casefold()
+              previous = packages.get(key)
+              if previous is not None and previous[1] != version:
+                  raise SystemExit(f"SBOM reports multiple versions of {name}")
+              packages[key] = (name, version)
 
           if not packages:
               raise SystemExit("SBOM contains no auditable PyPI packages")
