@@ -222,3 +222,33 @@ async def test_cancel_rejects_non_integer_run_id(monkeypatch) -> None:
 
     with pytest.raises(GitHubActionsError, match="invalid workflow run identifier"):
         await runtime.cancel("e" * 32, "main")
+
+
+def test_runtime_accepts_workflow_filename_and_rejects_path_segments() -> None:
+    GitHubActionsRuntime("owner/repo", "token", "container-execute.yml")
+
+    with pytest.raises(ValueError, match="workflow filename"):
+        GitHubActionsRuntime("owner/repo", "token", "../container-execute.yml")
+
+
+async def test_cancel_rejects_invalid_run_identifier_before_request(monkeypatch) -> None:
+    runtime = make_runtime()
+    calls = []
+
+    def fake_request(method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        calls.append((method, path))
+        return 200, {
+            "workflow_runs": [
+                {
+                    "id": True,
+                    "display_title": f"Container execution {'a' * 32}",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(runtime, "_request", fake_request)
+
+    with pytest.raises(GitHubActionsError, match="invalid workflow run identifier"):
+        await runtime.cancel("a" * 32, "main")
+
+    assert calls == [("GET", calls[0][1])]
