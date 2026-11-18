@@ -241,6 +241,48 @@ def test_container_name_rejects_untrusted_values() -> None:
         )
 
 
+def test_resolve_docker_target_preserves_explicit_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setenv("DOCKER_CONTEXT", "remote-ci")
+    monkeypatch.setenv("DOCKER_HOST", "tcp://ignored.example:2376")
+    target = resolve_docker_target()
+    assert target == DockerTarget("/usr/bin/docker", ("--context", "remote-ci"))
+
+
+def test_resolve_docker_target_preserves_explicit_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://docker.example:2376")
+    target = resolve_docker_target()
+    assert target == DockerTarget("/usr/bin/docker", ("--host", "tcp://docker.example:2376"))
+
+
+def test_resolve_docker_target_snapshots_default_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.setattr(
+        "code_test_lab.docker.subprocess.run",
+        lambda argv, **kwargs: CompletedProcess(argv, 0, stdout="workstation\\n", stderr=""),
+    )
+    assert resolve_docker_target() == DockerTarget(
+        "/usr/bin/docker", ("--context", "workstation"),
+    )
+
+
+def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        return CompletedProcess(
+            argv, 0, stdout='["WARNING: No pids limit support"]', stderr="",
+        )
+
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
+    with pytest.raises(ValueError, match="does not support enforcing PID limits"):
+        resolve_image_id("local:test", DOCKER_TARGET)
+
+
 def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPatch) -> None:
     import json
 
@@ -393,12 +435,12 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
         "--", "python", "-m", "pytest",
     ])
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", fake_run)
-    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DockerTarget("docker"))
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     assert main() == 124
-    assert calls[0][0][0:3] == ["docker", "run", "--rm"]
+    assert calls[0][0][0:3] == ["/usr/bin/docker", "run", "--rm"]
     assert calls[0][1]["timeout"] == 60
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
@@ -412,7 +454,8 @@ def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, ca
         "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
         "--", "python", "-m", "pytest",
     ])
-    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", timeout_run)
     monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: False)
     assert main() == 125
