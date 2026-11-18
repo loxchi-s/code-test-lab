@@ -7,7 +7,13 @@ import pytest
 import yaml
 
 from code_test_lab.cli import main
-from code_test_lab.docker import build_docker_command, remove_container, resolve_image_id
+from code_test_lab.docker import (
+    DockerTarget,
+    build_docker_command,
+    remove_container,
+    resolve_docker_target,
+    resolve_image_id,
+)
 from code_test_lab.policy import PolicyError, load_execution_policy
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +22,15 @@ WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 WORKFLOW_SECURITY_PATH = ROOT / ".github/workflows/workflow-security.yml"
 TEST_CONTAINER_NAME = "code-test-lab-" + "a" * 32
 IMAGE_ID = "sha256:" + "a" * 64
+DOCKER_TARGET = DockerTarget("/usr/bin/docker")
+
+
+def _docker_info_or_metadata(argv: list[str], metadata: object) -> CompletedProcess[str]:
+    if "info" in argv:
+        return CompletedProcess(argv, 0, stdout="[]", stderr="")
+    import json
+
+    return CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr="")
 
 
 def _workflow() -> dict:
@@ -233,12 +248,10 @@ def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
-        lambda argv, **kwargs: CompletedProcess(
-            argv, 0, stdout=json.dumps(metadata), stderr="",
-        ),
+        lambda argv, **kwargs: _docker_info_or_metadata(argv, metadata),
     )
     with pytest.raises(ValueError, match="volumes"):
-        resolve_image_id("local:test")
+        resolve_image_id("local:test", DOCKER_TARGET)
 
 
 def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,11 +261,9 @@ def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
-        lambda argv, **kwargs: CompletedProcess(
-            argv, 0, stdout=json.dumps(metadata), stderr="",
-        ),
+        lambda argv, **kwargs: _docker_info_or_metadata(argv, metadata),
     )
-    assert resolve_image_id("local:test") == IMAGE_ID
+    assert resolve_image_id("local:test", DOCKER_TARGET) == IMAGE_ID
 
 
 def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -265,7 +276,7 @@ def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
-    assert remove_container(TEST_CONTAINER_NAME) is True
+    assert remove_container(TEST_CONTAINER_NAME, DOCKER_TARGET) is True
     assert captured["argv"] == ["/usr/bin/docker", "rm", "--force", TEST_CONTAINER_NAME]
     assert captured["kwargs"] == {
         "check": False, "shell": False, "timeout": 10,
@@ -382,7 +393,8 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
         "--", "python", "-m", "pytest",
     ])
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", fake_run)
-    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DockerTarget("docker"))
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
     assert main() == 124
@@ -402,7 +414,7 @@ def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, ca
     ])
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", timeout_run)
-    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda _: False)
+    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: False)
     assert main() == 125
     assert "cleanup could not be confirmed" in capsys.readouterr().err
 
@@ -419,7 +431,7 @@ def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch
     ])
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", interrupt_run)
-    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name: calls.append(name) or True)
+    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: calls.append(name) or True)
     assert main() == 130
     assert len(calls) == 1
 
@@ -517,16 +529,17 @@ def test_policy_preserves_yaml_merge_precedence(tmp_path: Path) -> None:
 def test_main_interrupt_before_container_launch_returns_130_without_cleanup(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def interrupt_inspection(_: str) -> str:
+    def interrupt_inspection(*args: object) -> str:
         raise KeyboardInterrupt
 
     monkeypatch.setattr("sys.argv", [
         "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
     ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DockerTarget("docker"))
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", interrupt_inspection)
     monkeypatch.setattr(
         "code_test_lab.cli.remove_container",
-        lambda _: pytest.fail("cleanup must not run before Docker launch"),
+        lambda name, target=None: pytest.fail("cleanup must not run before Docker launch"),
     )
     assert main() == 130
     assert capsys.readouterr().err == ""
@@ -605,7 +618,7 @@ def test_cleanup_treats_already_removed_container_as_success(
             argv, 1, stdout="", stderr=f"Error response from daemon: No such container: {TEST_CONTAINER_NAME}",
         ),
     )
-    assert remove_container(TEST_CONTAINER_NAME) is True
+    assert remove_container(TEST_CONTAINER_NAME, DOCKER_TARGET) is True
 
 
 def test_main_cleans_up_after_docker_client_failure(
@@ -624,7 +637,7 @@ def test_main_cleans_up_after_docker_client_failure(
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", failed_run)
     monkeypatch.setattr(
         "code_test_lab.cli.remove_container",
-        lambda name: cleanup_calls.append(name) or True,
+        lambda name, target=None: cleanup_calls.append(name) or True,
     )
     assert main() == 125
     assert len(cleanup_calls) == 1
@@ -650,12 +663,10 @@ def test_resolve_image_id_rejects_invalid_metadata_shape(
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
-        lambda *args, **kwargs: CompletedProcess(
-            args[0], 0, stdout=json.dumps(metadata), stderr="",
-        ),
+        lambda *args, **kwargs: _docker_info_or_metadata(args[0], metadata),
     )
     with pytest.raises((ValueError, TypeError), match="invalid object|missing Config"):
-        resolve_image_id("local:test")
+        resolve_image_id("local:test", DOCKER_TARGET)
 
 
 
