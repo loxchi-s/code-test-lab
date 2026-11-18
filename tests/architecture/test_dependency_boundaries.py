@@ -69,6 +69,12 @@ def _internal_imports(path: Path) -> set[str]:
     return imports
 
 
+def test_plain_package_root_import_is_an_initializer_dependency(tmp_path: Path) -> None:
+    module = tmp_path / "consumer.py"
+    module.write_text("import code_test_lab as package\\nimport docker\\n", encoding="utf-8")
+    assert _internal_imports(module) == {"__init__"}
+
+
 def test_dependency_direction_respects_module_boundaries() -> None:
     """Core policy and Docker modules must not depend on orchestration or facade modules."""
     violations: list[str] = []
