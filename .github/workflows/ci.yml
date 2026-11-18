@@ -40,7 +40,7 @@ jobs:
             --entrypoint /bin/sh \
             code-test-lab:${{ github.sha }} \
             -ec 'ruff check --no-cache src tests
-            lint-imports
+            lint-imports --no-cache
             python -m pytest -q -p no:cacheprovider
             python -m compileall -q src
             mypy --cache-dir=/tmp/mypy_cache src
@@ -56,6 +56,7 @@ jobs:
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=2 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= \
+            --env XDG_CACHE_HOME=/tmp/cache \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
             --entrypoint pip-audit \
