@@ -63,7 +63,7 @@ def _internal_imports(path: Path) -> set[str]:
                             imports.add("__init__")
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                imported = _local_module(alias.name)
+                imported = "__init__" if alias.name == PACKAGE_NAME else _local_module(alias.name)
                 if imported:
                     imports.add(imported)
     return imports
