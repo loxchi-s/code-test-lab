@@ -514,6 +514,7 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert "--no-config" in audit
     assert "--no-ignores" in audit
     assert "--collect=all" in audit
+    assert "--strict-collection" in audit
     assert "${{ runner.temp }}/zizmor-venv/bin/zizmor" in audit
 
 
