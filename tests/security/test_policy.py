@@ -406,10 +406,11 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
         if step.get("uses", "").startswith("actions/checkout")
     )
     assert checkout["with"]["fetch-depth"] == "0"
-    scan = next(
-        step["run"] for step in gitleaks_steps
+    scan_step = next(
+        step for step in gitleaks_steps
         if step.get("name") == "Scan all commits using trusted base-branch rules"
     )
+    scan = scan_step["run"]
     scan_lines = scan.splitlines()
     command_start = next(
         index for index, line in enumerate(scan_lines)
