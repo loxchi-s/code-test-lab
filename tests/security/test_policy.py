@@ -448,7 +448,7 @@ def test_resolve_image_id_accepts_digest_qualified_reference(
 
     assert resolve_image_id(image, DOCKER_TARGET) == IMAGE_ID
     assert calls[-1][-1] == image
-    assert calls[-2][-2:] == ["{{json .}}", image]
+    assert calls[-1][-2:] == ["{{json .}}", image]
 
 
 def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPatch) -> None:
