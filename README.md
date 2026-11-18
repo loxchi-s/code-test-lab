@@ -63,6 +63,17 @@ pip-audit
 bandit -r src
 ```
 
+## GitHub Actions workflow security
+
+The separate `.github/workflows/workflow-security.yml` workflow performs:
+
+- `actionlint`: validates workflow syntax, expressions, and action inputs.
+- `Gitleaks`: scans the full checked-out Git history for accidentally committed secrets.
+- `zizmor`: audits GitHub Actions security configuration and gates high-severity findings.
+
+Tool versions are pinned. Downloaded release archives are verified against published SHA-256 checksums.
+The job uses read-only repository permissions and does not require repository write access or secrets.
+
 ## Policy-driven container execution
 
 `config/test-policy.yml` is the single source of truth for the container isolation settings.
@@ -88,6 +99,7 @@ config/test-policy.yml     Executable resource and isolation policy
 scripts/                   Reusable local check entry points
 src/code_test_lab/         Policy validation and isolated Docker runner
 tests/security/            Regression tests for policy enforcement
+tests/architecture/        Static dependency-boundary and cycle checks
 ```
 
 ## Security contract
