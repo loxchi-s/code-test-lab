@@ -38,7 +38,7 @@ def resolve_docker_target() -> DockerTarget:
         return DockerTarget(docker_executable, ("--host", host))
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - fixed Docker subcommand, argv only, and shell=False.
             [docker_executable, "context", "show"],
             check=False, shell=False, timeout=10, capture_output=True, text=True,
         )
@@ -56,7 +56,7 @@ def resolve_docker_target() -> DockerTarget:
 def _require_pid_limit_support(target: DockerTarget) -> None:
     """Fail closed when the selected daemon reports that PID limits are unsupported."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - Docker executable and subcommand are fixed; target is argv-only.
             [
                 target.executable, *target.global_args,
                 "info", "--format", "{{json .Warnings}}",
