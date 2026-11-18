@@ -780,6 +780,22 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
         in command_tokens
     )
 
+    actionlint_install = next(
+        step for step in jobs["actionlint"]["steps"]
+        if step.get("name") == "Install actionlint"
+    )
+    gitleaks_install = next(
+        step for step in gitleaks_steps if step.get("name") == "Install Gitleaks"
+    )
+    for install_step, archive in (
+        (actionlint_install, "actionlint.tar.gz"),
+        (gitleaks_install, "gitleaks.tar.gz"),
+    ):
+        assert 'mktemp -d "$RUNNER_TEMP/' in install_step["run"]
+        assert f'--output "$tool_dir/{archive}"' in install_step["run"]
+        assert "sha256sum --check" in install_step["run"]
+        assert f'tar -xzf "$tool_dir/{archive}" -C "$tool_dir"' in install_step["run"]
+
     zizmor_steps = jobs["zizmor"]["steps"]
     assert any("python -I -m venv" in step.get("run", "") for step in zizmor_steps)
     assert any(
