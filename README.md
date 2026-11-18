@@ -109,13 +109,15 @@ The runner passes arguments directly without a shell and applies the policy's pe
 
 ## Test another GitHub repository (Python)
 
-Use the manual **Python Repository Sandbox** workflow:
+Use the manual **Python Repository Sandbox** workflow.
+
+**Prerequisites:** The workflow file must already exist on the repository's default branch before GitHub exposes **Run workflow**. In the Actions page, the branch selector chooses the branch containing the workflow definition; the workflow's `ref` input independently selects the revision of the target repository. Only public target repositories are accepted. Private targets are rejected because the harness repository's Actions log readers may not have permission to view the target's code or test output.
 
 1. Open **Actions → Python Repository Sandbox → Run workflow**.
-2. Enter the target as `owner/repository`; choose a branch, tag, or commit in `ref` (default: `main`).
-3. For a public repository, no additional credential is required. For a private repository, configure an Actions secret named `TARGET_REPO_READ_TOKEN` containing a fine-grained token with read-only Contents access to that target repository.
-4. The workflow checks out this harness into `sandbox-harness` and the selected target into `target-repository` using `actions/checkout`. Checkout credentials are not persisted.
-5. It builds the trusted harness image, mounts only `target-repository` read-only, and runs `python -m pytest` inside the restricted container.
+2. Enter a public target as `owner/repository`; choose a branch, tag, or commit in `ref` (default: `main`).
+3. The workflow verifies that the target is publicly accessible before checkout. It checks out this harness into `sandbox-harness` and the selected target into `target-repository`; checkout credentials are not persisted.
+4. It builds the trusted harness image from the `sandbox-harness` directory only, mounts only `target-repository` read-only, and runs pytest inside the restricted container. The launcher imports pytest from the trusted image before adding the target directory to Python's import path.
+5. Target output is prevented from being interpreted as GitHub Actions workflow commands, and the test step has a 20-minute timeout.
 
 The target container has no network, no GitHub token or repository secrets, no Docker socket, a read-only root filesystem, non-root UID, dropped capabilities, no-new-privileges, and bounded CPU, memory, PIDs, and execution time. The workflow does not execute the target repository's Dockerfile or install its dependencies. Therefore, the first version is intended for Python repositories whose test dependencies are already available in the harness image (currently Python 3.12 and pytest). Repositories requiring additional packages will fail with an import error until a separately reviewed dependency-preparation stage is added. Do not solve that by running `pip install` on the host or by exposing credentials/network to the test container.
 
