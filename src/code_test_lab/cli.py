@@ -9,7 +9,12 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .docker import build_docker_command, remove_container, resolve_image_id
+from .docker import (
+    build_docker_command,
+    remove_container,
+    resolve_docker_target,
+    resolve_image_id,
+)
 from .policy import PolicyError, load_execution_policy
 
 
@@ -25,12 +30,15 @@ def main() -> int:
     container_name: str | None = None
     container_started = False
     execution: dict[str, Any] | None = None
+    docker_target = None
     try:
         execution = load_execution_policy(args.policy)
-        image_id = resolve_image_id(args.image)
+        docker_target = resolve_docker_target()
+        image_id = resolve_image_id(args.image, docker_target)
         container_name = f"code-test-lab-{uuid.uuid4().hex}"
         docker_argv = build_docker_command(
             image_id, command, execution, container_name=container_name,
+            docker_target=docker_target,
         )
         container_started = True
         completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
@@ -40,7 +48,7 @@ def main() -> int:
         if (
             completed.returncode != 0
             and container_name is not None
-            and not remove_container(container_name)
+            and not remove_container(container_name, docker_target)
         ):
             print(
                 "Docker client failed and cleanup could not be confirmed; "
@@ -55,7 +63,7 @@ def main() -> int:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
-        cleanup_ok = container_name is not None and remove_container(container_name)
+        cleanup_ok = container_name is not None and remove_container(container_name, docker_target)
         if not cleanup_ok:
             print(
                 "Execution timed out and cleanup could not be confirmed; "
