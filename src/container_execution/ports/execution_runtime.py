@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+
 from container_execution.domain.execution import ExecutionRequest, ExecutionStatus
 
 
