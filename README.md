@@ -82,9 +82,10 @@ The job uses read-only repository permissions and does not require repository wr
 
 ## Policy-driven container execution
 
-`config/test-policy.yml` is the single source of truth for the container isolation settings.
-The policy runner validates it and constructs the Docker argument vector; the workflow does not
-duplicate Docker security flags.
+`config/test-policy.yml` is the source of truth for the local policy runner.
+The GitHub Actions workflow uses an explicit, fixed Docker argument vector so it does not install
+or execute pull-request-controlled Python code on the host before isolation. CI limits mirror the
+checked-in policy and are asserted by regression tests; update both together when changing limits.
 
 Build the local image first (Docker must be available):
 
