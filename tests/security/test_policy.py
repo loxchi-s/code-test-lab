@@ -25,19 +25,20 @@ def _workflow() -> dict:
 
 def _is_single_fail_fast_docker_run(script: str) -> bool:
     """Reject shell suffixes that could mask the Docker command exit status."""
-    normalized = script.replace(chr(92) + "\\n", " ")
-    command = normalized.split("docker run", maxsplit=1)
+    normalized = re.sub(r"\\\n\s*", " ", script)
+    lexer = shlex.shlex(normalized, posix=True, punctuation_chars=";&|")
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    tokens = list(lexer)
+    shell_operators = {";", "&&", "||", "&", "|"}
     return (
-        normalized.count("docker run") == 1
-        and len(command) == 2
-        and "pytest" in command[1]
-        and not re.search(r"(?:\\|\\||&&|;)", command[1])
-    )
-
-
-def _contains_untrusted_credential(expression: str) -> bool:
+        tokens[:2] == ["docker", "run"]
+        and tokens.count("docker") == 1
+        and "pytest" in normalized
+        and not any(token in shell_operators for token in tokens)
+    )def _contains_untrusted_credential(expression: str) -> bool:
     return bool(re.search(
-        r"\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\.token\b)",
+        r"""\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\s*(?:\.\s*token\b|\[\s*['"]token['"]\s*\]))""",
         expression,
         flags=re.IGNORECASE,
     ))
@@ -157,7 +158,10 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     for flag, value in expected_pairs.items():
         assert argv.count(flag) == 1
         assert argv[argv.index(flag) + 1] == value
-    assert argv[-5:] == [IMAGE_ID, "python", "-m", "pytest", "-q"]
+    entrypoint_index = argv.index("--entrypoint")
+    assert argv[entrypoint_index + 1] == "python"
+    assert argv[entrypoint_index + 2] == IMAGE_ID
+    assert argv[-3:] == ["-m", "pytest", "-q"]
     assert argv.count("--read-only") == 1
     assert argv.count("--network") == 1
     assert "max-size=10m" in argv
@@ -173,7 +177,10 @@ def test_container_command_is_passed_as_distinct_argv_items() -> None:
         IMAGE_ID, ["python", "-c", marker], execution,
         container_name=TEST_CONTAINER_NAME,
     )
-    assert argv[-4:] == [IMAGE_ID, "python", "-c", marker]
+    entrypoint_index = argv.index("--entrypoint")
+    assert argv[entrypoint_index + 1] == "python"
+    assert argv[entrypoint_index + 2] == IMAGE_ID
+    assert argv[-2:] == ["-c", marker]
 
 
 def test_container_command_allows_empty_non_executable_operands() -> None:
@@ -182,7 +189,10 @@ def test_container_command_allows_empty_non_executable_operands() -> None:
         IMAGE_ID, ["printf", "%s", ""], execution,
         container_name=TEST_CONTAINER_NAME,
     )
-    assert argv[-4:] == [IMAGE_ID, "printf", "%s", ""]
+    entrypoint_index = argv.index("--entrypoint")
+    assert argv[entrypoint_index + 1] == "printf"
+    assert argv[entrypoint_index + 2] == IMAGE_ID
+    assert argv[-2:] == ["%s", ""]
 
 
 def test_image_reference_rejects_option_injection() -> None:
