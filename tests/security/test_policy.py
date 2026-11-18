@@ -39,6 +39,11 @@ def _is_single_fail_fast_docker_run(script: str) -> bool:
     )
 
 
+def _normalize_read_only_option(option: str) -> str:
+    """Canonicalize Docker's explicit true spelling before allowlist validation."""
+    return "--read-only" if option == "--read-only=true" else option
+
+
 def _contains_untrusted_credential(expression: str) -> bool:
     return bool(re.search(
         r"""\$\{\{[^}]*\b(?:secrets\s*(?:\.|\[)|github\s*(?:\.\s*token\b|\[\s*['"]token['"]\s*\]))""",
@@ -100,7 +105,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     option_values: dict[str, list[str]] = {}
     index = 0
     while index < len(docker_options):
-        option = docker_options[index]
+        option = _normalize_read_only_option(docker_options[index])
         assert option in approved_options, f"unapproved Docker option: {option}"
         if option in {"--rm", "--read-only"}:
             option_values.setdefault(option, []).append("true")
@@ -138,6 +143,11 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     assert policy["ci"]["permissions"] == {"contents": "read"}
     assert policy["ci"]["allow_pull_request_target"] is False
     assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
+
+
+def test_read_only_true_option_is_normalized_but_false_is_rejected() -> None:
+    assert _normalize_read_only_option("--read-only=true") == "--read-only"
+    assert _normalize_read_only_option("--read-only=false") == "--read-only=false"
 
 
 def test_policy_generates_exact_restricted_docker_argv() -> None:
