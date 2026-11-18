@@ -73,10 +73,10 @@ jobs:
           fi
 
           cd "$trusted_dir"
-          gitleaks git "$GITHUB_WORKSPACE" \\
-            --config "$trusted_config" \\
-            --gitleaks-ignore-path "$trusted_ignore" \\
-            --redact --no-banner \\
+          gitleaks git "$GITHUB_WORKSPACE" \
+            --config "$trusted_config" \
+            --gitleaks-ignore-path "$trusted_ignore" \
+            --redact --no-banner \
             --log-opts="--all --full-history --diff-filter=tuxdb --diff-merges=first-parent"
 
   zizmor:
