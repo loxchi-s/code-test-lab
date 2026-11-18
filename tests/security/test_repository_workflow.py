@@ -37,7 +37,7 @@ def _docker_options(tokens: list[str]) -> tuple[dict[str, list[str]], str, list[
     value_options = {
         "--name", "--network", "--mount", "--workdir", "--tmpfs",
         "--memory", "--memory-swap", "--cpus", "--pids-limit",
-        "--log-driver", "--log-opt", "--env", "--security-opt",
+        "--log-driver", "--log-opt", "--env", "--cap-drop", "--security-opt",
         "--user", "--entrypoint",
     }
     parsed: dict[str, list[str]] = {}
