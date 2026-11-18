@@ -21,7 +21,7 @@ def test_ci_permissions_are_read_only() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
     policy = yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8"))
 
-    assert "permissions:\\n  contents: read" in workflow
+    assert "permissions:\n  contents: read" in workflow
     assert "pull_request_target:" not in workflow
     assert "secrets." not in workflow
     assert policy["ci"]["permissions"] == {"contents": "read"}
