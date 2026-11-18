@@ -8,6 +8,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.tokens import (
+    BlockEndToken,
+    BlockMappingStartToken,
+    BlockSequenceStartToken,
+    FlowMappingEndToken,
+    FlowMappingStartToken,
+    FlowSequenceEndToken,
+    FlowSequenceStartToken,
+)
 
 _REQUIRED_EXECUTION_KEYS = {
     "network", "filesystem", "user", "memory", "cpus",
@@ -76,14 +85,15 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
 
         if isinstance(node, yaml.MappingNode):
             direct_keys: set[Any] = set()
+            seen_merge = False
             for key_node, value_node in node.value:
                 if key_node.tag == "tag:yaml.org,2002:merge":
-                    if "<<merge>>" in direct_keys:
+                    if seen_merge:
                         raise yaml.constructor.ConstructorError(
                             "while constructing a mapping", node.start_mark,
                             "found duplicate merge key '<<'", key_node.start_mark,
                         )
-                    direct_keys.add("<<merge>>")
+                    seen_merge = True
                     merge_nodes = (
                         value_node.value
                         if isinstance(value_node, yaml.SequenceNode)
@@ -122,6 +132,27 @@ class _UniqueKeySafeLoader(yaml.SafeLoader):
         return super().construct_mapping(node, deep=deep)
 
 
+def _validate_yaml_token_depth(policy_text: str) -> None:
+    """Reject excessive collection nesting before PyYAML composes recursive nodes."""
+    collection_starts = (
+        BlockMappingStartToken,
+        BlockSequenceStartToken,
+        FlowMappingStartToken,
+        FlowSequenceStartToken,
+    )
+    collection_ends = (BlockEndToken, FlowMappingEndToken, FlowSequenceEndToken)
+    depth = 0
+    for token in yaml.scan(policy_text):
+        if isinstance(token, collection_starts):
+            depth += 1
+            if depth > _MAX_YAML_DEPTH:
+                raise PolicyError("Policy YAML exceeds the structural expansion limits")
+        elif isinstance(token, collection_ends):
+            depth -= 1
+            if depth < 0:
+                raise PolicyError("Policy YAML contains invalid collection structure")
+
+
 def _size_in_mib(
     value: object, *, key: str, maximum: int, minimum: int = 1,
 ) -> int:
@@ -141,11 +172,15 @@ def _size_in_mib(
 def load_execution_policy(path: Path) -> dict[str, Any]:
     """Load and validate the policy without executing external commands."""
     try:
-        if path.stat().st_size > _MAX_POLICY_BYTES:
+        with path.open("rb") as stream:
+            policy_bytes = stream.read(_MAX_POLICY_BYTES + 1)
+        if len(policy_bytes) > _MAX_POLICY_BYTES:
             raise PolicyError(f"Policy file exceeds {_MAX_POLICY_BYTES} bytes")
-        policy_text = path.read_text(encoding="utf-8")
-        if len(policy_text.encode("utf-8")) > _MAX_POLICY_BYTES:
-            raise PolicyError(f"Policy file exceeds {_MAX_POLICY_BYTES} bytes")
+        try:
+            policy_text = policy_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise PolicyError("Policy file must be valid UTF-8") from exc
+        _validate_yaml_token_depth(policy_text)
         document = yaml.load(  # nosec B506 - custom loader inherits SafeLoader and rejects duplicate keys.
             policy_text,
             Loader=_UniqueKeySafeLoader,
