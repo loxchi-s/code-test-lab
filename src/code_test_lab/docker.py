@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess  # nosec B404 - Docker is invoked with argv lists, never through a shell.
@@ -10,6 +11,42 @@ from pathlib import PurePosixPath
 from typing import Any
 
 _CONTAINER_NAME_PATTERN = re.compile(r"code-test-lab-[a-f0-9]{32}")
+_IMAGE_ID_PATTERN = re.compile(r"sha256:[a-f0-9]{64}")
+
+
+def resolve_image_id(image: str) -> str:
+    """Resolve a local image to an immutable ID and reject image-declared volumes."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
+        raise ValueError("Docker image reference contains unsupported characters")
+    docker_executable = shutil.which("docker")
+    if docker_executable is None:
+        raise FileNotFoundError("docker executable not found")
+    try:
+        result = subprocess.run(
+            [docker_executable, "image", "inspect", "--format", "{{json .}}", image],
+            check=False, shell=False, timeout=10, capture_output=True, text=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Docker image inspection exceeded 10 seconds") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        raise ValueError(f"Docker image inspection failed: {detail or result.returncode}")
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Docker image inspection returned invalid metadata") from exc
+    if not isinstance(metadata, dict):
+        raise ValueError("Docker image inspection returned an invalid object")
+    config = metadata.get("Config")
+    if not isinstance(config, dict):
+        raise ValueError("Docker image metadata is missing Config")
+    volumes = config.get("Volumes")
+    if volumes:
+        raise ValueError("Docker images declaring volumes are not permitted")
+    image_id = metadata.get("Id")
+    if not isinstance(image_id, str) or not _IMAGE_ID_PATTERN.fullmatch(image_id):
+        raise ValueError("Docker image inspection did not return an immutable image ID")
+    return image_id
 
 
 def build_docker_command(
@@ -20,10 +57,10 @@ def build_docker_command(
     container_name: str,
 ) -> list[str]:
     """Build a Docker argv vector; never interpolate commands through a shell."""
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}", image):
-        raise ValueError("Docker image reference contains unsupported characters")
-    if not command or any(not item for item in command):
-        raise ValueError("Container command must contain non-empty arguments")
+    if not _IMAGE_ID_PATTERN.fullmatch(image):
+        raise ValueError("Docker image must be an immutable sha256 image ID")
+    if not command or not command[0]:
+        raise ValueError("Container command must contain a non-empty executable")
     if not _CONTAINER_NAME_PATTERN.fullmatch(container_name):
         raise ValueError("Container name must be a generated code-test-lab identifier")
 
@@ -36,6 +73,15 @@ def build_docker_command(
         "--memory-swap", str(execution["memory"]),
         "--cpus", str(execution["cpus"]),
         "--pids-limit", str(execution["pids_limit"]),
+        "--log-driver", "json-file",
+        "--log-opt", "max-size=10m",
+        "--log-opt", "max-file=3",
+        "--env", "HTTP_PROXY=",
+        "--env", "HTTPS_PROXY=",
+        "--env", "ALL_PROXY=",
+        "--env", "http_proxy=",
+        "--env", "https_proxy=",
+        "--env", "all_proxy=",
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", str(execution["user"]),
@@ -45,25 +91,32 @@ def build_docker_command(
 
 
 def remove_container(container_name: str) -> bool:
-    """Best-effort cleanup for a container whose Docker client timed out."""
+    """Best-effort bounded cleanup for a container whose Docker client stopped."""
     if not _CONTAINER_NAME_PATTERN.fullmatch(container_name):
         raise ValueError("Container name must be a generated code-test-lab identifier")
     docker_executable = shutil.which("docker")
     if docker_executable is None:
-        print("Warning: Docker executable not found; timed-out container may remain.", file=sys.stderr)
+        print(
+            "Cleanup failed: Docker executable not found; container may still be running.",
+            file=sys.stderr,
+        )
         return False
     try:
-        result = subprocess.run(  # nosec B603 - fixed Docker cleanup argv, no shell.
+        result = subprocess.run(
             [docker_executable, "rm", "--force", container_name],
             check=False, shell=False, timeout=10, capture_output=True, text=True,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
-        print(f"Warning: unable to clean up timed-out container: {exc}", file=sys.stderr)
+        print(
+            f"Cleanup failed: unable to remove container {container_name}: {exc}",
+            file=sys.stderr,
+        )
         return False
     if result.returncode != 0:
         detail = (result.stderr or "").strip()
         print(
-            f"Warning: Docker container cleanup returned {result.returncode}: {detail}",
+            f"Cleanup failed for {container_name} (exit {result.returncode}): "
+            f"{detail or 'Docker returned a non-zero status'}; container may still be running.",
             file=sys.stderr,
         )
         return False
