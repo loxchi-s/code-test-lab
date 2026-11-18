@@ -156,3 +156,10 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert "GITHUB_TOKEN" not in run_step["run"]
     assert "secrets." not in run_step["run"]
     assert job["timeout-minutes"] == "35"
+
+def test_readme_documents_manual_dispatch_and_private_target_boundary() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "default branch" in readme
+    assert "branch selector" in readme
+    assert "Only public target repositories are accepted" in readme
+    assert "20-minute timeout" in readme
