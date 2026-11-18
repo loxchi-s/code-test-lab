@@ -101,7 +101,7 @@ def test_container_command_allows_empty_non_executable_operands() -> None:
 
 def test_image_reference_rejects_option_injection() -> None:
     execution = load_execution_policy(POLICY_PATH)
-    with pytest.raises(ValueError, match="image reference"):
+    with pytest.raises(ValueError, match="immutable"):
         build_docker_command(
             "--privileged", ["python", "-m", "pytest"], execution,
             container_name=TEST_CONTAINER_NAME,
@@ -115,6 +115,35 @@ def test_container_name_rejects_untrusted_values() -> None:
             IMAGE_ID, ["python", "-m", "pytest"], execution,
             container_name="--privileged",
         )
+
+
+def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    metadata = {"Id": IMAGE_ID, "Config": {"Volumes": {"/data": {}}}}
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "code_test_lab.docker.subprocess.run",
+        lambda argv, **kwargs: CompletedProcess(
+            argv, 0, stdout=json.dumps(metadata), stderr="",
+        ),
+    )
+    with pytest.raises(ValueError, match="volumes"):
+        resolve_image_id("local:test")
+
+
+def test_resolve_image_id_returns_immutable_digest(monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "code_test_lab.docker.subprocess.run",
+        lambda argv, **kwargs: CompletedProcess(
+            argv, 0, stdout=json.dumps(metadata), stderr="",
+        ),
+    )
+    assert resolve_image_id("local:test") == IMAGE_ID
 
 
 def test_timeout_cleanup_uses_fixed_docker_rm_argv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -228,7 +257,7 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
     container_name = calls[0][0][calls[0][0].index("--name") + 1]
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
 
-    
+
 def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def timeout_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
         raise TimeoutExpired(argv, timeout=1200)
