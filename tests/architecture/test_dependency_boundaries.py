@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "code_test_lab"
+PACKAGE_NAME = "code_test_lab"
 
 # Policy and Docker are lower-level modules; CLI orchestration may depend on them.
 FORBIDDEN_DEPENDENCIES = {
@@ -15,21 +16,41 @@ FORBIDDEN_DEPENDENCIES = {
 }
 
 
+def _local_module(module: str) -> str | None:
+    """Resolve a package-qualified import to a top-level local module."""
+    prefix = f"{PACKAGE_NAME}."
+    if module.startswith(prefix):
+        candidate = module[len(prefix):].split(".", maxsplit=1)[0]
+        return candidate if (PACKAGE_ROOT / f"{candidate}.py").is_file() else None
+    candidate = module.split(".", maxsplit=1)[0]
+    return candidate if (PACKAGE_ROOT / f"{candidate}.py").is_file() else None
+
+
 def _internal_imports(path: Path) -> set[str]:
-    """Return local code_test_lab module dependencies declared by one Python module."""
+    """Return local package dependencies, including absolute and relative imports."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module:
-            imported = node.module.split(".", maxsplit=1)[0]
-            if (PACKAGE_ROOT / f"{imported}.py").is_file():
-                imports.add(imported)
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                imported = _local_module(node.module)
+                if imported:
+                    imports.add(imported)
+            elif node.level == 1:
+                if node.module:
+                    imported = _local_module(node.module)
+                    if imported:
+                        imports.add(imported)
+                else:
+                    for alias in node.names:
+                        imported = _local_module(alias.name)
+                        if imported:
+                            imports.add(imported)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.startswith("code_test_lab."):
-                    imported = alias.name.removeprefix("code_test_lab.").split(".", maxsplit=1)[0]
-                    if (PACKAGE_ROOT / f"{imported}.py").is_file():
-                        imports.add(imported)
+                imported = _local_module(alias.name)
+                if imported:
+                    imports.add(imported)
     return imports
 
 
