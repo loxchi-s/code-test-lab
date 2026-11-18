@@ -30,34 +30,28 @@ jobs:
 
   container-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install policy runner
+        run: python -m pip install -e ".[dev]"
       - name: Build isolated test image
         run: docker build --pull --tag code-test-lab:${{ github.sha }} .
-      - name: Run unit and security tests in restricted container
+      - name: Run unit and security tests using repository policy
         run: |
-          docker run --rm \
-            --network none \
-            --read-only \
-            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --memory 2g --cpus 2 --pids-limit 256 \
-            --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --user 10001:10001 \
-            code-test-lab:${{ github.sha }} \
-            python -m pytest -q -p no:cacheprovider
-      - name: Run lint in restricted container
+          python -m code_test_lab.isolation \
+            --policy config/test-policy.yml \
+            --image code-test-lab:${{ github.sha }} \
+            -- python -m pytest -q -p no:cacheprovider
+      - name: Run lint using repository policy
         run: |
-          docker run --rm \
-            --network none \
-            --read-only \
-            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --memory 2g --cpus 2 --pids-limit 256 \
-            --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --user 10001:10001 \
-            code-test-lab:${{ github.sha }} \
-            ruff check --no-cache src tests
+          python -m code_test_lab.isolation \
+            --policy config/test-policy.yml \
+            --image code-test-lab:${{ github.sha }} \
+            -- ruff check --no-cache src tests

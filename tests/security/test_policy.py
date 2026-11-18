@@ -1,48 +1,90 @@
 from pathlib import Path
 
+import pytest
+import yaml
+
+from code_test_lab.isolation import (
+    PolicyError,
+    build_docker_command,
+    load_execution_policy,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
-POLICY = (ROOT / "config/test-policy.yml").read_text(encoding="utf-8")
-WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+POLICY_PATH = ROOT / "config/test-policy.yml"
+WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 
 
 def test_ci_permissions_are_read_only() -> None:
-    assert "permissions:\n  contents: read" in WORKFLOW
-    assert "pull_request_target:" not in WORKFLOW
-    assert "secrets." not in WORKFLOW
-    assert "allow_pull_request_target: false" in POLICY
-    assert "expose_repository_secrets_to_test_container: false" in POLICY
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    policy = yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8"))
+
+    assert "permissions:\n  contents: read" in workflow
+    assert "pull_request_target:" not in workflow
+    assert "secrets." not in workflow
+    assert policy["ci"]["permissions"] == {"contents": "read"}
+    assert policy["ci"]["allow_pull_request_target"] is False
+    assert policy["ci"]["expose_repository_secrets_to_test_container"] is False
 
 
-def test_execution_policy_is_enforced_by_both_docker_runs() -> None:
-    expected_flags = (
-        "--network none",
-        "--read-only",
-        "--memory 2g",
-        "--cpus 2",
-        "--pids-limit 256",
-        "--cap-drop ALL",
-        "--security-opt no-new-privileges",
-        "--user 10001:10001",
+def test_policy_generates_the_restricted_docker_argv() -> None:
+    execution = load_execution_policy(POLICY_PATH)
+    argv = build_docker_command(
+        "code-test-lab:test",
+        ["python", "-m", "pytest", "-q"],
+        execution,
     )
-    for flag in expected_flags:
-        assert WORKFLOW.count(flag) == 2, (
-            f"Expected both restricted Docker runs to use {flag!r}"
-        )
+
+    expected = [
+        "--network", "none",
+        "--read-only",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
+        "--memory", "2g",
+        "--cpus", "2",
+        "--pids-limit", "256",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--user", "10001:10001",
+    ]
+    for flag in expected:
+        assert flag in argv
+    assert argv[-4:] == ["python", "-m", "pytest", "-q"]
+    assert argv.count("docker") == 1
 
 
-def test_execution_policy_bounds_container_validation_duration() -> None:
-    assert "timeout_minutes: 20" in POLICY
-    assert (
-        "container-validation:\n    runs-on: ubuntu-latest\n"
-        "    timeout-minutes: 20"
-    ) in WORKFLOW
+def test_workflow_delegates_docker_execution_to_policy_runner() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert workflow.count("python -m code_test_lab.isolation") == 2
+    assert "docker run" not in workflow
+    assert "timeout-minutes: 45" in workflow
 
 
-def test_policy_declares_expected_isolation_controls() -> None:
-    for setting in (
-        "network: disabled",
-        "filesystem: read-only",
-        "drop_capabilities: all",
-        "no_new_privileges: true",
-    ):
-        assert setting in POLICY
+def test_container_timeout_is_derived_from_policy() -> None:
+    execution = load_execution_policy(POLICY_PATH)
+    assert execution["timeout_minutes"] == 20
+
+
+def test_policy_rejects_network_access(tmp_path: Path) -> None:
+    invalid = tmp_path / "policy.yml"
+    invalid.write_text(
+        POLICY_PATH.read_text(encoding="utf-8").replace(
+            "network: disabled", "network: enabled"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="network: disabled"):
+        load_execution_policy(invalid)
+
+
+def test_policy_rejects_repository_secret_exposure(tmp_path: Path) -> None:
+    invalid = tmp_path / "policy.yml"
+    invalid.write_text(
+        POLICY_PATH.read_text(encoding="utf-8").replace(
+            "expose_repository_secrets_to_test_container: false",
+            "expose_repository_secrets_to_test_container: true",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyError, match="secrets"):
+        load_execution_policy(invalid)
