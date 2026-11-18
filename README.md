@@ -103,6 +103,20 @@ The runner passes arguments directly without a shell and enforces the policy's p
 Ordinary unit tests and lint checks do not require Docker. The GitHub Actions job timeout is an
 outer CI safety bound. The test container receives no GitHub credentials or repository secrets.
 
+## Test another GitHub repository (Python)
+
+Use the manual **Python Repository Sandbox** workflow:
+
+1. Open **Actions → Python Repository Sandbox → Run workflow**.
+2. Enter the target as `owner/repository`; choose a branch, tag, or commit in `ref` (default: `main`).
+3. For a public repository, no additional credential is required. For a private repository, configure an Actions secret named `TARGET_REPO_READ_TOKEN` containing a fine-grained token with read-only Contents access to that target repository.
+4. The workflow checks out this harness into `sandbox-harness` and the selected target into `target-repository` using `actions/checkout`. Checkout credentials are not persisted.
+5. It builds the trusted harness image, mounts only `target-repository` read-only, and runs `python -m pytest` inside the restricted container.
+
+The target container has no network, no GitHub token or repository secrets, no Docker socket, a read-only root filesystem, non-root UID, dropped capabilities, no-new-privileges, and bounded CPU, memory, PIDs, and execution time. The workflow does not execute the target repository's Dockerfile or install its dependencies. Therefore, the first version is intended for Python repositories whose test dependencies are already available in the harness image (currently Python 3.12 and pytest). Repositories requiring additional packages will fail with an import error until a separately reviewed dependency-preparation stage is added. Do not solve that by running `pip install` on the host or by exposing credentials/network to the test container.
+
+The workflow is manually dispatched and is separate from the normal PR CI. It is a first Python adapter; additional language runtimes can be added as separate, pinned sandbox images without changing the repository-checkout contract. As with the existing CI, protect the default branch and govern workflow changes: a workflow modified on its own branch is not an independent trust boundary.
+
 ## Repository structure
 
 ```text
