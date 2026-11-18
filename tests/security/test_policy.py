@@ -283,6 +283,48 @@ def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
         resolve_image_id("local:test", DOCKER_TARGET)
 
 
+def test_image_inspection_uses_the_pinned_docker_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    metadata = {"Id": IMAGE_ID, "Config": {"Volumes": None}}
+    target = DockerTarget("/usr/bin/docker", ("--context", "remote-ci"))
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append(argv)
+        return _docker_info_or_metadata(argv, metadata)
+
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
+    assert resolve_image_id("local:test", target) == IMAGE_ID
+    assert len(calls) == 2
+    assert all(call[1:3] == ["--context", "remote-ci"] for call in calls)
+
+
+def test_container_launch_and_cleanup_use_the_same_docker_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = DockerTarget("/usr/bin/docker", ("--context", "remote-ci"))
+    command = build_docker_command(
+        IMAGE_ID, ["python", "-m", "pytest"], load_execution_policy(POLICY_PATH),
+        container_name=TEST_CONTAINER_NAME, docker_target=target,
+    )
+    assert command[:4] == ["/usr/bin/docker", "--context", "remote-ci", "run"]
+
+    captured: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        captured.extend(argv)
+        return CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("code_test_lab.docker.subprocess.run", fake_run)
+    assert remove_container(TEST_CONTAINER_NAME, target) is True
+    assert captured == [
+        "/usr/bin/docker", "--context", "remote-ci", "rm", "--force", TEST_CONTAINER_NAME,
+    ]
+
+
 def test_resolve_image_id_rejects_declared_volumes(monkeypatch: pytest.MonkeyPatch) -> None:
     metadata = {"Id": IMAGE_ID, "Config": {"Volumes": {"/data": {}}}}
     monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
