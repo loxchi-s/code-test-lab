@@ -107,6 +107,12 @@ jobs:
             "code-test-lab:${{ github.sha }}" \
             -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))'
 
+      - name: Remove smoke container
+        if: ${{ always() }}
+        env:
+          SANDBOX_CONTAINER: sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker rm -f "$SANDBOX_CONTAINER" || true
+
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
