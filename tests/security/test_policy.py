@@ -783,7 +783,8 @@ def test_main_cleans_up_after_docker_client_failure(
         "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
         "--", "python", "-m", "pytest",
     ])
-    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", failed_run)
     monkeypatch.setattr(
         "code_test_lab.cli.remove_container",
