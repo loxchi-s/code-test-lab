@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import shlex
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -73,6 +75,45 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
     assert "https://api.github.com/repos/$TARGET_REPOSITORY" in validate["run"]
     assert "jq -r '.visibility // \"unknown\"'" in validate["run"]
     assert '[[ "$visibility" != "public" ]]' in validate["run"]
+    assert '[[ -z "${TARGET_REF//[[:space:]]/}" ]]' in validate["run"]
+
+
+def test_repository_validation_rejects_private_and_blank_refs(
+    tmp_path: Path,
+) -> None:
+    workflow = _workflow()
+    steps = workflow["jobs"]["python-sandbox"]["steps"]
+    validate = next(
+        step for step in steps if step.get("name") == "Validate target repository input"
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    curl = bin_dir / "curl"
+    curl.write_text(
+        '#!/bin/sh\nprintf \'{"visibility":"%s"}\' "$TEST_VISIBILITY"\n',
+        encoding="utf-8",
+    )
+    jq = bin_dir / "jq"
+    jq.write_text('#!/bin/sh\nprintf \'%s\\n\' "$TEST_VISIBILITY"\n', encoding="utf-8")
+    curl.chmod(0o755)
+    jq.chmod(0o755)
+    base_env = os.environ.copy()
+    base_env.update({
+        "PATH": f"{bin_dir}{os.pathsep}{base_env.get('PATH', '')}",
+        "TARGET_REPOSITORY": "owner/public-repo",
+        "TARGET_REF": "main",
+    })
+
+    def run_validation(visibility: str, ref: str = "main") -> subprocess.CompletedProcess[str]:
+        env = base_env | {"TEST_VISIBILITY": visibility, "TARGET_REF": ref}
+        return subprocess.run(
+            ["bash", "-e", "-c", validate["run"]],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+        )
+
+    assert run_validation("public").returncode == 0
+    assert run_validation("private").returncode != 0
+    assert run_validation("public", "   ").returncode != 0
 
 
 def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
@@ -123,6 +164,8 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert "local exit_code=$?" in run_step["run"]
     assert 'exit "$exit_code"' in run_step["run"]
     assert "stop-commands" in run_step["run"]
+    assert "printf '\\n::%s::\\n' \"$marker\"" in run_step["run"]
+    assert run_step["run"].rstrip().endswith("2>&1")
     assert "printf '::%s::\\n' \"$marker\"" in run_step["run"]
 
     tokens = _docker_run_tokens(run_step["run"])
@@ -147,13 +190,12 @@ def test_target_code_runs_only_in_restricted_docker_container() -> None:
     assert options["--user"] == ["10001:10001"]
     assert options["--entrypoint"] == ["python"]
     forwarded_env = options["--env"]
-    for required in (
+    assert forwarded_env == [
         "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=",
         "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy=",
         "PYTHONDONTWRITEBYTECODE=1", "PYTHONPYCACHEPREFIX=/tmp/pycache",
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "XDG_CACHE_HOME=/tmp/cache",
-    ):
-        assert required in forwarded_env
+    ]
 
     assert command[:2] == ["-I", "-c"]
     launcher = command[2]
