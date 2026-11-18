@@ -534,3 +534,40 @@ def test_policy_rejects_signaling_nan_cpu_value(tmp_path: Path) -> None:
     invalid.write_text(text, encoding="utf-8")
     with pytest.raises(PolicyError, match="cpus"):
         load_execution_policy(invalid)
+
+
+
+def test_cleanup_treats_already_removed_container_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("code_test_lab.docker.shutil.which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(
+        "code_test_lab.docker.subprocess.run",
+        lambda argv, **kwargs: CompletedProcess(
+            argv, 1, stdout="", stderr=f"Error response from daemon: No such container: {TEST_CONTAINER_NAME}",
+        ),
+    )
+    assert remove_container(TEST_CONTAINER_NAME) is True
+
+
+def test_main_cleans_up_after_docker_client_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    cleanup_calls: list[str] = []
+
+    def failed_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
+        return CompletedProcess(argv, 125, stdout="", stderr="Docker attach stream failed")
+
+    monkeypatch.setattr("sys.argv", [
+        "code-test-lab", "--policy", str(POLICY_PATH), "--image", "local:test",
+        "--", "python", "-m", "pytest",
+    ])
+    monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda _: IMAGE_ID)
+    monkeypatch.setattr("code_test_lab.cli.subprocess.run", failed_run)
+    monkeypatch.setattr(
+        "code_test_lab.cli.remove_container",
+        lambda name: cleanup_calls.append(name) or True,
+    )
+    assert main() == 125
+    assert len(cleanup_calls) == 1
+    assert capsys.readouterr().err == ""
