@@ -70,7 +70,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         "--cap-drop ALL",
         "--security-opt no-new-privileges",
     )
-    docker_tokens = shlex.split(quality_run)
+    docker_tokens = shlex.split(quality_run.replace(chr(92) + "\n", " "))
     image_index = next(
         index for index, token in enumerate(docker_tokens)
         if token.startswith("code-test-lab:")
