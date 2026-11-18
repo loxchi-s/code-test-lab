@@ -80,7 +80,7 @@ The separate `.github/workflows/workflow-security.yml` workflow performs:
 Tool versions are pinned. Downloaded release archives are verified against published SHA-256 checksums.
 CI uses Syft to inspect the built image and emit a CycloneDX SBOM without running the image. A
 standard-library parser converts the SBOM's PyPI package identities into a pinned requirements
-inventory; the separately pinned pip-audit action audits that inventory with dependency resolution
+inventory; the separately version-pinned pip-audit tool in an isolated host virtual environment audits that inventory with dependency resolution
 disabled. The scanner does not execute Python code from the PR-built image. This improves scanner
 independence but does not replace trusted workflow governance: the PR still contains its own
 workflow definitions.
