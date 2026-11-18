@@ -9,7 +9,8 @@ COPY tests ./tests
 COPY config ./config
 COPY .github/workflows/ci.yml ./.github/workflows/ci.yml
 
-RUN python -m pip install --no-cache-dir '.[dev]' \
+RUN python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
+    && python -m pip install --no-cache-dir '.[dev]' \
     && useradd --uid 10001 --create-home runner \
     && chown -R runner:runner /workspace
 
