@@ -37,8 +37,14 @@ jobs:
           TARGET_REPOSITORY: ${{ inputs.repository }}
           TARGET_REF: ${{ inputs.ref }}
         run: |
-          TARGET_REPOSITORY="$(printf '%s' "$TARGET_REPOSITORY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          TARGET_REF="$(printf '%s' "$TARGET_REF" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          trim() {
+            local value="$1"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"
+          TARGET_REF="$(trim "$TARGET_REF")"
           if [[ ! "$TARGET_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
             echo "::error::repository must use owner/repository format"
             exit 2
