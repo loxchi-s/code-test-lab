@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import shlex
 import subprocess
@@ -316,7 +317,21 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert trusted_branch.index("import pytest") < trusted_branch.index("configure_target_import_paths")
     assert "sys.path[trusted_index:trusted_index] = target_paths" in runner
     assert "sys.path.append(target_paths[-1])" in runner
-    assert "site.addsitedir(" not in runner
+    runner_tree = ast.parse(runner)
+    assert not any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Attribute) and node.func.attr == "addsitedir"
+            or isinstance(node.func, ast.Name) and node.func.id == "addsitedir"
+        )
+        for node in ast.walk(runner_tree)
+    )
+    assert not any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "site"
+        and any(alias.name == "addsitedir" for alias in node.names)
+        for node in ast.walk(runner_tree)
+    )
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
