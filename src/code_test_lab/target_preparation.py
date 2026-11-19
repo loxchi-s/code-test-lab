@@ -9,7 +9,7 @@ import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 _MAX_PYPROJECT_BYTES = 1024 * 1024
 _COMMIT_SHA_PATTERN = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
@@ -24,7 +24,7 @@ class TargetProjectMetadata:
 
     distribution_name: str
     requirements: tuple[str, ...]
-    uses_vcs_versioning: bool
+    vcs_version_provider: Literal["setuptools-scm", "hatch-vcs"] | None
 
 
 def _canonicalize_distribution_name(name: str) -> str:
@@ -131,14 +131,22 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     if "setuptools_scm" in tool and "setuptools-scm" not in build_requirement_names:
         raise ValueError("setuptools-scm configuration requires setuptools-scm in build-system.requires")
 
-    uses_vcs_versioning = "version" in dynamic and bool(
-        build_requirement_names.intersection({"setuptools-scm", "hatch-vcs"})
+    uses_dynamic_version = "version" in dynamic
+    hatch_vcs_configured = (
+        isinstance(hatch_version, dict) and hatch_version.get("source") == "vcs"
     )
+    if uses_dynamic_version and hatch_vcs_configured and "hatch-vcs" in build_requirement_names:
+        vcs_version_provider: Literal["setuptools-scm", "hatch-vcs"] | None = "hatch-vcs"
+    elif uses_dynamic_version and "setuptools-scm" in build_requirement_names:
+        vcs_version_provider = "setuptools-scm"
+    else:
+        vcs_version_provider = None
+
     requirements = tuple(dict.fromkeys((*dependencies, *dev_dependencies)))
     return TargetProjectMetadata(
         distribution_name=name,
         requirements=requirements,
-        uses_vcs_versioning=uses_vcs_versioning,
+        vcs_version_provider=vcs_version_provider,
     )
 
 
@@ -164,7 +172,7 @@ def scm_version_overrides(
     """Create a commit-scoped VCS version using the resolver-compatible seed version."""
     if not _COMMIT_SHA_PATTERN.fullmatch(commit_sha):
         raise ValueError("target commit must be a full 40- or 64-character hexadecimal SHA")
-    if not metadata.uses_vcs_versioning:
+    if metadata.vcs_version_provider is None:
         return {}
 
     base_version = seed_version.strip() or "0.0.dev0"
@@ -182,6 +190,11 @@ def scm_version_overrides(
         version = f"{release}+{local}.{commit_suffix}"
     else:
         version = f"{base_version}+{commit_suffix}"
+
+    if metadata.vcs_version_provider == "hatch-vcs":
+        # hatch-vcs calls setuptools-scm without a distribution name, so use
+        # the documented unscoped override for this provider.
+        return {"SETUPTOOLS_SCM_PRETEND_VERSION": version}
 
     suffix = re.sub(r"[-_.]+", "_", metadata.distribution_name).upper()
     return {

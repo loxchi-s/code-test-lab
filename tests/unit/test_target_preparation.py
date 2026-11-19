@@ -70,7 +70,7 @@ def test_prepare_source_excludes_git_and_returns_static_dependency_contract(tmp_
 
     assert metadata.distribution_name == "pytest"
     assert metadata.requirements == ("iniconfig>=2", "pytest-xdist>=3.5")
-    assert metadata.uses_vcs_versioning
+    assert metadata.vcs_version_provider == "setuptools-scm"
     assert not (destination / ".git").exists()
     assert (destination / ".hidden").read_text(encoding="utf-8") == "preserved"
     assert (destination / "tests" / "test_sample.py").is_file()
@@ -87,7 +87,7 @@ def test_setuptools_scm_requirement_names_are_pep503_normalized(tmp_path: Path) 
         source = tmp_path / f"target-{index}"
         _write_project(source, requirement=requirement)
         metadata = prepare_target_source(source, tmp_path / f"prepared-{index}", COMMIT_SHA)
-        assert metadata.uses_vcs_versioning, requirement
+        assert metadata.vcs_version_provider == "setuptools-scm", requirement
 
 
 def test_hatch_vcs_receives_commit_scoped_version_overrides(tmp_path: Path) -> None:
@@ -100,10 +100,9 @@ def test_hatch_vcs_receives_commit_scoped_version_overrides(tmp_path: Path) -> N
     )
     metadata = prepare_target_source(source, tmp_path / "prepared", COMMIT_SHA)
 
-    assert metadata.uses_vcs_versioning
+    assert metadata.vcs_version_provider == "hatch-vcs"
     assert scm_version_overrides(metadata, COMMIT_SHA, "1.2.3") == {
-        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST": "1.2.3+sandbox.g0123456789ab",
-        "VCS_VERSIONING_PRETEND_VERSION_FOR_PYTEST": "1.2.3+sandbox.g0123456789ab",
+        "SETUPTOOLS_SCM_PRETEND_VERSION": "1.2.3+sandbox.g0123456789ab",
     }
 
 
@@ -155,7 +154,7 @@ def test_static_project_version_does_not_receive_scm_override(tmp_path: Path) ->
     _write_project(source, dynamic=False)
     metadata = prepare_target_source(source, tmp_path / "prepared", COMMIT_SHA)
 
-    assert not metadata.uses_vcs_versioning
+    assert metadata.vcs_version_provider is None
     assert scm_version_overrides(metadata, COMMIT_SHA) == {}
 
 
@@ -171,7 +170,7 @@ def test_dynamic_version_without_supported_vcs_backend_does_not_receive_override
     )
     metadata = prepare_target_source(source, tmp_path / "prepared", COMMIT_SHA)
 
-    assert not metadata.uses_vcs_versioning
+    assert metadata.vcs_version_provider is None
     assert scm_version_overrides(metadata, COMMIT_SHA) == {}
 
 
