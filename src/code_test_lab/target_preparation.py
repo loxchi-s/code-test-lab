@@ -34,7 +34,7 @@ def _read_project_metadata(source: Path) -> dict[str, Any]:
 
 
 def _scm_version_overrides(document: dict[str, Any], commit_sha: str) -> dict[str, str]:
-    """Create package-scoped deterministic versions for setuptools-scm projects."""
+    """Create package-scoped deterministic versions for supported VCS providers."""
     project = document.get("project")
     build_system = document.get("build-system")
     if not isinstance(project, dict) or not isinstance(build_system, dict):
@@ -49,15 +49,11 @@ def _scm_version_overrides(document: dict[str, Any], commit_sha: str) -> dict[st
     ):
         raise ValueError("target build-system.requires must be a list of strings")
 
-    scm_requirement = re.compile(
-        r"^\s*setuptools[-_]scm(?=\s*(?:\[|[<>=!~;\s]|$))",
-        re.IGNORECASE,
-    )
     requirement_names = {
         re.sub(r"[-_.]+", "-", match.group(1)).lower()
         for requirement in requirements
         if (match := re.match(
-            r"^\\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)",
+            r"^\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)",
             requirement,
         ))
     }
@@ -66,7 +62,7 @@ def _scm_version_overrides(document: dict[str, Any], commit_sha: str) -> dict[st
 
     name = project.get("name")
     if not isinstance(name, str) or not _DISTRIBUTION_NAME_PATTERN.fullmatch(name):
-        raise ValueError("dynamic setuptools-scm projects must declare a valid project.name")
+        raise ValueError("dynamic VCS projects must declare a valid project.name")
 
     suffix = re.sub(r"[-_.]+", "_", name).upper()
     version = f"0.0.dev0+g{commit_sha[:12].lower()}"
