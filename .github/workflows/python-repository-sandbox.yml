@@ -173,12 +173,44 @@ jobs:
             /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --no-deps --editable .
             /sandbox/venv/bin/python -c "from pathlib import Path; import pytest; print(\"Prepared pytest from:\", pytest.__file__); source = Path(\"/sandbox/source\"); module = Path(pytest.__file__).resolve(); package_dirs = (source / \"src\", source); assert not any((root / \"pytest\" / \"__init__.py\").is_file() for root in package_dirs) or any(module.is_relative_to(root) for root in package_dirs), \"pytest did not resolve from the target source tree\""' 2>&1
 
-      - name: Run target pytest suite without network or credentials
+      - name: Resolve target distribution with trusted metadata parser
+        id: target-metadata
         if: ${{ steps.prepare-dependencies.outcome == 'success' }}
+        timeout-minutes: 2
+        env:
+          TARGET_COMMIT: ${{ steps.checkout-target.outputs.commit }}
+        run: |
+          metadata_file="$(mktemp "$RUNNER_TEMP/target-distribution.XXXXXX")"
+          trap 'rm -f "$metadata_file"' EXIT
+          docker run --rm \
+            --network none \
+            --read-only \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --log-driver json-file --log-opt max-size=1m --log-opt max-file=1 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --env "TARGET_COMMIT=${TARGET_COMMIT}" \
+            --entrypoint /bin/sh \
+            "code-test-lab-python:${GITHUB_SHA}" \
+            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --commit-sha "$TARGET_COMMIT" --distribution-file /tmp/target-distribution >/dev/null
+            cat /tmp/target-distribution' > "$metadata_file"
+          distribution="$(cat "$metadata_file")"
+          distribution="${distribution,,}"
+          if [[ ! "$distribution" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+            echo "::error::trusted metadata parser returned an invalid distribution name"
+            exit 2
+          fi
+          printf 'distribution=%s\n' "$distribution" >> "$GITHUB_OUTPUT"
+
+      - name: Run target pytest suite without network or credentials
+        if: ${{ steps.target-metadata.outcome == 'success' }}
         timeout-minutes: 20
         env:
           TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
           TARGET_SOURCE: ${{ github.workspace }}/target-repository
+          TARGET_DISTRIBUTION: ${{ steps.target-metadata.outputs.distribution }}
           TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
@@ -202,11 +234,15 @@ jobs:
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
             --env XDG_CACHE_HOME=/tmp/cache \
+            --env "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
-            --entrypoint /sandbox/venv/bin/python \
+            --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -I -B -m pytest -q -p no:cacheprovider /input/target 2>&1
+            -ec 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then
+              exec /sandbox/venv/bin/python -I -B -m pytest -q -p no:cacheprovider /input/target
+            fi
+            exec /usr/local/bin/python -I -B -c "from pathlib import Path; import sys; import pytest; site = next(Path(\"/sandbox/venv/lib\").glob(\"python*/site-packages\")); sys.path.append(str(site)); raise SystemExit(pytest.main([\"-q\", \"-p\", \"no:cacheprovider\", \"/input/target\"]))"' 2>&1
 
       - name: Remove prepared target containers and unmount tmpfs workspace
         if: ${{ always() }}

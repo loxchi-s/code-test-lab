@@ -172,6 +172,10 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
         step for step in steps
         if step.get("name") == "Prepare target dependencies in restricted network container"
     )
+    metadata = next(
+        step for step in steps
+        if step.get("name") == "Resolve target distribution with trusted metadata parser"
+    )
     test = next(
         step for step in steps
         if step.get("name") == "Run target pytest suite without network or credentials"
@@ -230,13 +234,46 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "GITHUB_OUTPUT" in workspace["run"]
     assert "sudo mount -t tmpfs" in workspace["run"]
     assert "size=2g,uid=10001,gid=10001,mode=0755" in workspace["run"]
-    assert 'python -m pip install' in prepare_command[1]
+    assert "python -m pip install" in prepare_command[1]
 
+    assert metadata["id"] == "target-metadata"
+    assert metadata["if"] == "${{ steps.prepare-dependencies.outcome == 'success' }}"
+    assert metadata["timeout-minutes"] == "2"
+    assert "TARGET_COMMIT" in metadata["env"]
+    assert "GITHUB_OUTPUT" in metadata["run"]
+    assert "distribution=\"$(cat \"$metadata_file\")\"" in metadata["run"]
+    assert "distribution=${distribution,,}" in metadata["run"]
+    assert "pip install" not in metadata["run"]
+    metadata_tokens = _docker_run_tokens(metadata["run"])
+    metadata_options, metadata_image, metadata_command = _docker_options(metadata_tokens)
+    assert metadata_image == "code-test-lab-python:${GITHUB_SHA}"
+    assert metadata_options["--network"] == ["none"]
+    assert metadata_options["--read-only"] == ["true"]
+    assert metadata_options["--mount"] == [
+        "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly"
+    ]
+    assert metadata_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=64m"]
+    assert metadata_options["--memory"] == ["512m"]
+    assert metadata_options["--memory-swap"] == ["512m"]
+    assert metadata_options["--cpus"] == ["1"]
+    assert metadata_options["--pids-limit"] == ["64"]
+    assert metadata_options["--cap-drop"] == ["ALL"]
+    assert metadata_options["--security-opt"] == ["no-new-privileges"]
+    assert metadata_options["--user"] == ["10001:10001"]
+    assert metadata_options["--env"] == ["TARGET_COMMIT=${TARGET_COMMIT}"]
+    assert metadata_options["--entrypoint"] == ["/bin/sh"]
+    assert metadata_command[:1] == ["-ec"]
+    assert "python -I -m code_test_lab.target_preparation --source /input/target" in metadata_command[1]
+    assert "--distribution-file /tmp/target-distribution" in metadata_command[1]
+    assert "cat /tmp/target-distribution" in metadata_command[1]
+
+    assert test["if"] == "${{ steps.target-metadata.outcome == 'success' }}"
     assert test["timeout-minutes"] == "20"
     assert "trap restore_workflow_commands EXIT" in test["run"]
     assert "stop-commands" in test["run"]
     assert "TARGET_WORKSPACE" in test["env"]
     assert "TARGET_SOURCE" in test["env"]
+    assert "TARGET_DISTRIBUTION" in test["env"]
     test_tokens = _docker_run_tokens(test["run"])
     test_options, test_image, test_command = _docker_options(test_tokens)
     assert test_image == "code-test-lab-python:${GITHUB_SHA}"
@@ -256,11 +293,17 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--cap-drop"] == ["ALL"]
     assert test_options["--security-opt"] == ["no-new-privileges"]
     assert test_options["--user"] == ["10001:10001"]
-    assert test_options["--entrypoint"] == ["/sandbox/venv/bin/python"]
+    assert test_options["--env"] == ["TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}"]
+    assert test_options["--entrypoint"] == ["/bin/sh"]
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
-    assert test_command[:4] == ["-I", "-B", "-m", "pytest"]
-    assert test_command[-1] == "/input/target"
+    assert test_command[:1] == ["-ec"]
+    runner_script = test_command[1]
+    assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]' in runner_script
+    assert "exec /sandbox/venv/bin/python -I -B -m pytest" in runner_script
+    assert "exec /usr/local/bin/python -I -B -c" in runner_script
+    assert runner_script.index("import pytest") < runner_script.index("sys.path.append")
+    assert "/input/target" in runner_script
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
@@ -296,6 +339,8 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "Only public target repositories are accepted" in readme
     assert "15-minute dependency-preparation timeout" in readme
     assert "network-enabled preparation container" in readme
+    assert "trusted metadata-only container" in readme
+    assert "trusted pytest runner" in readme
     assert "--requirement /tmp/target-requirements.txt" in readme
     assert "--no-deps --editable ." in readme
     assert "resolver-compatible seed version" in readme
