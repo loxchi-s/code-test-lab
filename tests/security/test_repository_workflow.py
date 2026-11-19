@@ -75,7 +75,15 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
     assert "https://api.github.com/repos/$TARGET_REPOSITORY" in validate["run"]
     assert "jq -r '.visibility // \"unknown\"'" in validate["run"]
     assert '[[ "$visibility" != "public" ]]' in validate["run"]
-    assert '[[ -z "${TARGET_REF//[[:space:]]/}" ]]' in validate["run"]
+    assert 'TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"' in validate["run"]
+    assert 'TARGET_REF="$(trim "$TARGET_REF")"' in validate["run"]
+    assert '>> "$GITHUB_OUTPUT"' in validate["run"]
+    target_checkout = next(
+        step for step in job["steps"]
+        if step.get("name") == "Checkout target repository into isolated workspace"
+    )
+    assert target_checkout["with"]["repository"] == "${{ steps.validate-target.outputs.repository }}"
+    assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
 
 
 def test_repository_validation_rejects_private_and_blank_refs(
@@ -87,15 +95,23 @@ def test_repository_validation_rejects_private_and_blank_refs(
         step for step in steps if step.get("name") == "Validate target repository input"
     )
     base_env = os.environ.copy()
+    output_file = tmp_path / "github-output"
     base_env.update({
         "TARGET_REPOSITORY": "owner/public-repo",
         "TARGET_REF": "main",
+        "GITHUB_OUTPUT": str(output_file),
     })
     wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
 
-    def run_validation(visibility: str, ref: str = "main") -> subprocess.CompletedProcess[str]:
+    def run_validation(
+        visibility: str,
+        ref: str = "main",
+        repository: str = "owner/public-repo",
+    ) -> subprocess.CompletedProcess[str]:
+        output_file.write_text("", encoding="utf-8")
         env = base_env | {
             "TEST_VISIBILITY": visibility,
+            "TARGET_REPOSITORY": repository,
             "TARGET_REF": ref,
             "VALIDATE_SCRIPT": validate["run"],
         }
@@ -105,8 +121,12 @@ def test_repository_validation_rejects_private_and_blank_refs(
         )
 
     assert run_validation("public").returncode == 0
-    assert run_validation("private").returncode != 0
+    assert "repository=owner/public-repo\nref=main\n" == output_file.read_text(encoding="utf-8")
+    assert run_validation("public", " main ", " pytest-dev/pytest ").returncode == 0
+    assert "repository=pytest-dev/pytest\nref=main\n" == output_file.read_text(encoding="utf-8")
     assert run_validation("public", "   ").returncode != 0
+    assert run_validation("public", "main\nmalicious=value").returncode != 0
+    assert run_validation("private").returncode != 0
 
 
 def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
