@@ -234,6 +234,7 @@ jobs:
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
             --env XDG_CACHE_HOME=/tmp/cache \
+            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
             --env "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
