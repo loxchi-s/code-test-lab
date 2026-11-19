@@ -49,9 +49,12 @@ def _scm_version_overrides(document: dict[str, Any], commit_sha: str) -> dict[st
     ):
         raise ValueError("target build-system.requires must be a list of strings")
 
+    scm_requirement = re.compile(
+        r"^\s*setuptools[-_]scm(?=\s*(?:\[|[<>=!~;\s]|$))",
+        re.IGNORECASE,
+    )
     uses_setuptools_scm = any(
-        re.match(r"^\s*setuptools[-_]scm(?=\s*(?:\[|[<>=!~;\s]|$))", requirement, re.IGNORECASE)
-        for requirement in requirements
+        scm_requirement.match(requirement) for requirement in requirements
     )
     if not uses_setuptools_scm:
         return {}
@@ -101,7 +104,7 @@ def main() -> int:
             "".join(f"{name}={value}\n" for name, value in sorted(overrides.items())),
             encoding="utf-8",
         )
-    except (OSError, UnicodeDecodeError, ValueError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"Target preparation metadata error: {exc}", file=sys.stderr)
         return 2
     return 0
