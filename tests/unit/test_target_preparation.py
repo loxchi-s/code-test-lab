@@ -333,8 +333,8 @@ def test_prepare_cli_writes_seeded_scm_environment_overrides(
 
     assert main() == 0
     assert env_file.read_text(encoding="utf-8") == (
-        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\\n"
-        "VCS_VERSIONING_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\\n"
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\n"
+        "VCS_VERSIONING_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\n"
     )
 
 
@@ -365,7 +365,7 @@ def test_prepare_cli_rejects_invalid_seed_version(
 
 
 def test_dependency_requirements_reject_unicode_line_separators(tmp_path: Path) -> None:
-    for separator in ("\\u0085", "\\u2028", "\\u2029"):
+    for separator in ("\u0085", "\u2028", "\u2029"):
         source = tmp_path / f"target-{ord(separator):04x}"
         _write_project(source, dependencies=(f"iniconfig>=2{separator}--index-url=https://invalid",))
         _assert_raises(
