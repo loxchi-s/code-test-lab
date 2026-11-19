@@ -1,0 +1,119 @@
+name: Python Repository Sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Public GitHub repository (owner/repository). Private repositories are rejected to protect test output."
+        required: true
+        type: string
+      ref:
+        description: "Branch, tag, or commit to test."
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  python-sandbox:
+    name: Checkout and test external Python repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted sandbox harness
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: sandbox-harness
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate target repository input
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_REF: ${{ inputs.ref }}
+        run: |
+          if [[ ! "$TARGET_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+            echo "::error::repository must use owner/repository format"
+            exit 2
+          fi
+          if [[ -z "${TARGET_REF//[[:space:]]/}" ]]; then
+            echo "::error::ref must not be empty"
+            exit 2
+          fi
+          metadata="$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 15 \
+            "https://api.github.com/repos/$TARGET_REPOSITORY")" || {
+            echo "::error::target repository must be publicly accessible"
+            exit 2
+          }
+          visibility="$(jq -r '.visibility // "unknown"' <<< "$metadata")"
+          if [[ "$visibility" != "public" ]]; then
+            echo "::error::private target repositories are not supported because harness log readers may not have access"
+            exit 2
+          fi
+
+      - name: Checkout target repository into isolated workspace
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          path: target-repository
+          persist-credentials: false
+          clean: true
+          fetch-depth: 1
+
+      - name: Build trusted Python sandbox image
+        id: build-image
+        working-directory: sandbox-harness
+        run: docker build --pull --tag "code-test-lab-python:${GITHUB_SHA}" .
+
+      - name: Verify Docker daemon PID limit support
+        if: ${{ steps.build-image.outcome == 'success' }}
+        timeout-minutes: 2
+        run: |
+          info="$(docker info --format '{{json .}}')"
+          if ! jq -e '
+            type == "object"
+            and .PidsLimit == true
+            and .MemoryLimit == true
+            and .SwapLimit == true
+          ' <<< "$info" >/dev/null; then
+            echo "::error::Docker daemon must explicitly support PID, memory, and swap limits"
+            exit 2
+          fi
+
+      - name: Run target pytest suite without network or credentials
+        if: ${{ steps.build-image.outcome == 'success' }}
+        timeout-minutes: 20
+        run: |
+          marker="$(cat /proc/sys/kernel/random/uuid)"
+          restore_workflow_commands() {
+            local exit_code=$?
+            trap - EXIT
+            printf '\n::%s::\n' "$marker"
+            exit "$exit_code"
+          }
+          trap restore_workflow_commands EXIT
+          printf '::stop-commands::%s\n' "$marker"
+          docker run --rm \
+            --network none \
+            --read-only \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/workspace/target,readonly" \
+            --workdir /workspace/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
+            --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --env PYTHONPYCACHEPREFIX=/tmp/pycache \
+            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            --env XDG_CACHE_HOME=/tmp/cache \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --entrypoint python \
+            "code-test-lab-python:${GITHUB_SHA}" \
+            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))' 2>&1
