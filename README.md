@@ -85,8 +85,9 @@ CI uses Syft to inspect the built image and emit a CycloneDX SBOM without runnin
 A standard-library parser filters the SBOM to PyPI package components; the separately installed,
 checksum-pinned Grype scanner evaluates that Python dependency inventory against its vulnerability
 database with a low-severity failure threshold. A second Grype scan evaluates the complete image
-SBOM, including operating-system packages, with the same threshold. Neither scan installs packages
-or executes code from the PR-built image. Scanner independence does not replace trusted workflow
+SBOM, including operating-system packages, and blocks High or Critical findings. Medium and Low
+image findings remain visible in the scanner report. Neither scan installs packages or executes
+code from the PR-built image. Scanner independence does not replace trusted workflow
 governance: the PR still contains its own workflow definitions.
 The job uses read-only repository permissions and does not require repository write access or secrets.
 
