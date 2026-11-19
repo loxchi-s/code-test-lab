@@ -241,9 +241,9 @@ jobs:
             --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
             -ec 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then
-              exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner --source /input/target --venv /sandbox/venv --target-pytest
+              exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv --target-pytest
             fi
-            exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner --source /input/target --venv /sandbox/venv' 2>&1
+            exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv' 2>&1
 
       - name: Remove prepared target containers and unmount tmpfs workspace
         if: ${{ always() }}
