@@ -157,6 +157,7 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
     assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
+    assert target_checkout["id"] == "checkout-target"
     assert "token" not in target_checkout["with"]
     assert "TARGET_REPO_READ_TOKEN" not in workflow.__repr__()
 
@@ -185,6 +186,12 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "pip install --no-cache-dir --only-binary=:all:" in prepare["run"]
     assert '--editable ".[dev]"' in prepare["run"]
     assert "python -m venv /sandbox/venv" in prepare["run"]
+    assert "code_test_lab.target_preparation --source /input/target" in prepare_command[1]
+    assert '--commit-sha "$TARGET_COMMIT"' in prepare_command[1]
+    assert "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_" in prepare_command[1]
+    assert "VCS_VERSIONING_PRETEND_VERSION_FOR_" in prepare_command[1]
+    assert prepare_options["--env"] == ["TARGET_COMMIT=${TARGET_COMMIT}"]
+    assert "TARGET_COMMIT" in prepare["env"]
     assert "GITHUB_TOKEN" not in prepare["run"]
     assert "secrets." not in prepare["run"]
     assert "docker.sock" not in prepare["run"]
@@ -214,7 +221,6 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "GITHUB_OUTPUT" in workspace["run"]
     assert "sudo mount -t tmpfs" in workspace["run"]
     assert "size=2g,uid=10001,gid=10001,mode=0755" in workspace["run"]
-    assert "is_relative_to(source)" in prepare_command[1]
     assert 'python -m pip install' in prepare_command[1]
 
     assert test["timeout-minutes"] == "20"

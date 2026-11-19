@@ -13,6 +13,7 @@ FORBIDDEN_DEPENDENCIES = {
     "policy": {"cli", "docker", "isolation"},
     "docker": {"cli", "policy", "isolation"},
     "cli": {"isolation"},
+    "target_preparation": {"cli", "docker", "policy", "isolation"},
 }
 
 

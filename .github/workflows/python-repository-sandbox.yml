@@ -69,6 +69,7 @@ jobs:
           fi
 
       - name: Checkout target repository into isolated workspace
+        id: checkout-target
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ steps.validate-target.outputs.repository }}
@@ -117,6 +118,7 @@ jobs:
         timeout-minutes: 15
         env:
           TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+          TARGET_COMMIT: ${{ steps.checkout-target.outputs.commit }}
           PREP_CONTAINER: python-target-prepare-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
@@ -139,13 +141,24 @@ jobs:
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
+            --env "TARGET_COMMIT=${TARGET_COMMIT}" \
             --env HOME=/tmp --env PIP_NO_CACHE_DIR=1 --env PIP_DISABLE_PIP_VERSION_CHECK=1 \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
             --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -ec 'mkdir /sandbox/source
-            cp -R /input/target/. /sandbox/source/
+            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --destination /sandbox/source --commit-sha "$TARGET_COMMIT" --env-file /tmp/scm-overrides
+            while IFS= read -r override; do
+              case "$override" in
+                SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*|VCS_VERSIONING_PRETEND_VERSION_FOR_*)
+                  export "$override"
+                  ;;
+                *)
+                  echo "::error::target preparation returned an invalid environment variable"
+                  exit 2
+                  ;;
+              esac
+            done < /tmp/scm-overrides
             cd /sandbox/source
             python -m venv /sandbox/venv
             /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --editable ".[dev]"

@@ -59,3 +59,14 @@ name = "CLI orchestration must not depend on compatibility facade"
 type = "forbidden"
 source_modules = ["code_test_lab.cli"]
 forbidden_modules = ["code_test_lab.isolation"]
+
+[[tool.importlinter.contracts]]
+name = "Target preparation must not depend on runtime orchestration"
+type = "forbidden"
+source_modules = ["code_test_lab.target_preparation"]
+forbidden_modules = [
+  "code_test_lab.cli",
+  "code_test_lab.docker",
+  "code_test_lab.isolation",
+  "code_test_lab.policy",
+]
