@@ -151,7 +151,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     workflow = _workflow()
     steps = workflow["jobs"]["python-sandbox"]["steps"]
     workspace = next(
-        step for step in steps if step.get("name") == "Create isolated target workspace"
+        step for step in steps if step.get("name") == "Create size-bounded target tmpfs volume"
     )
     prepare = next(
         step for step in steps
@@ -163,7 +163,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     )
     cleanup = next(
         step for step in steps
-        if step.get("name") == "Remove prepared target workspace"
+        if step.get("name") == "Remove prepared target containers and tmpfs volume"
     )
 
     assert prepare["timeout-minutes"] == "15"
@@ -182,7 +182,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--read-only"] == ["true"]
     assert prepare_options["--mount"] == [
         "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly",
-        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox",
+        "type=volume,src=${TARGET_VOLUME},dst=/sandbox",
     ]
     assert prepare_options["--workdir"] == ["/sandbox"]
     assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]
@@ -196,22 +196,23 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "cp -a /input/target/. /sandbox/source/" in prepare_command[1]
-    assert 'sudo chown 10001:10001 "$workspace"' in workspace["run"]
-    assert "chmod 0777" not in workspace["run"]
+    assert "docker volume create --driver local" in workspace["run"]
+    assert "--opt type=tmpfs --opt device=tmpfs" in workspace["run"]
+    assert "--opt o=size=4g,uid=10001,gid=10001" in workspace["run"]
     assert "is_relative_to(source)" in prepare_command[1]
     assert 'python -m pip install' in prepare_command[1]
 
     assert test["timeout-minutes"] == "20"
     assert "trap restore_workflow_commands EXIT" in test["run"]
     assert "stop-commands" in test["run"]
-    assert "TARGET_WORKSPACE" in test["env"]
+    assert "TARGET_VOLUME" in test["env"]
     test_tokens = _docker_run_tokens(test["run"])
     test_options, test_image, test_command = _docker_options(test_tokens)
     assert test_image == "code-test-lab-python:${GITHUB_SHA}"
     assert test_options["--network"] == ["none"]
     assert test_options["--read-only"] == ["true"]
     assert test_options["--mount"] == [
-        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly"
+        "type=volume,src=${TARGET_VOLUME},dst=/sandbox,readonly"
     ]
     assert test_options["--workdir"] == ["/sandbox/source"]
     assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
@@ -231,7 +232,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "docker.sock" not in test["run"]
 
     assert cleanup["if"] == "${{ always() }}"
-    assert 'sudo rm -rf -- "$TARGET_WORKSPACE"' in cleanup["run"]
+    assert 'docker rm -f "$PREP_CONTAINER" "$TEST_CONTAINER"' in cleanup["run"]
+    assert 'docker volume rm "$TARGET_VOLUME"' in cleanup["run"]
 
 
 def test_target_code_is_never_run_on_host_and_cleanup_is_bounded() -> None:
