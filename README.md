@@ -21,10 +21,9 @@ No MCP server, MCP client, MCP transport, or remote execution service is part of
 
 The Sandbox and GitHub Actions runner are separate environments. Files created in Sandbox do not
 automatically appear in GitHub; changes must be committed or uploaded through GitHub Integration.
-CI also runs a restricted-container smoke test against a generated fixture. It verifies that pytest
-is imported from the harness image before target code is added to the import path, that the target
-mount is read-only, and that the test process runs as the configured non-root UID. The manual
-workflow's external checkout and dispatch path remains a separate operation.
+CI also runs a restricted-container smoke test against a generated fixture to verify the
+base harness image, read-only target mounts, and non-root execution. The manual external-repository
+workflow prepares a separate target virtual environment before executing the selected repository.
 
 ## Requirements
 
@@ -121,10 +120,11 @@ Use the manual **Python Repository Sandbox** workflow.
 1. Open **Actions → Python Repository Sandbox → Run workflow**.
 2. Enter a public target as `owner/repository`; choose a branch, tag, or commit in `ref` (default: `main`).
 3. The workflow verifies that the target is publicly accessible before checkout. It checks out this harness into `sandbox-harness` and the selected target into `target-repository`; checkout credentials are not persisted.
-4. It builds the trusted harness image from the `sandbox-harness` directory only, mounts only `target-repository` read-only, and runs pytest inside the restricted container. The launcher imports pytest from the trusted image before adding the target directory to Python's import path.
-5. Target output is prevented from being interpreted as GitHub Actions workflow commands, and the test step has a 20-minute timeout.
+4. It builds the trusted harness image from the `sandbox-harness` directory only. It creates a temporary workspace and copies the target checkout into that workspace from a restricted container; the original checkout is mounted read-only.
+5. It prepares the target environment inside a separate network-enabled container with no GitHub credentials, no secrets, no Docker socket, a read-only root filesystem, non-root UID, dropped capabilities, no-new-privileges, and bounded CPU, memory, PIDs, and a 15-minute dependency-preparation timeout. The container installs the target project using `pip install -e ".[dev]"` and accepts wheel distributions only; the target project must declare a `dev` extra containing pytest and its test dependencies. Build backends and package installation scripts are untrusted code and execute only inside this restricted preparation container.
+6. The test container mounts the prepared workspace read-only, runs the target environment's pytest, and keeps `--network none`, no credentials, no Docker socket, non-root UID, dropped capabilities, no-new-privileges, bounded CPU/memory/PIDs, and a 20-minute timeout. Test output is prevented from being interpreted as GitHub Actions workflow commands.
 
-The target container has no network, no GitHub token or repository secrets, no Docker socket, a read-only root filesystem, non-root UID, dropped capabilities, no-new-privileges, and bounded CPU, memory, PIDs, and execution time. The workflow does not execute the target repository's Dockerfile or install its dependencies. Therefore, the first version is intended for Python repositories whose test dependencies are already available in the harness image (currently Python 3.12 and pytest). Repositories requiring additional packages will fail with an import error until a separately reviewed dependency-preparation stage is added. Do not solve that by running `pip install` on the host or by exposing credentials/network to the test container.
+Dependency preparation is the only network-enabled execution stage; the test stage has no network. The workflow never runs target installation commands on the GitHub Actions host and never passes GitHub credentials or repository secrets into either container. Repositories without a compatible `pyproject.toml` dev extra, or dependencies available only as source distributions, are outside this workflow's current contract.
 
 The workflow is manually dispatched and is separate from the normal PR CI. It is a first Python adapter; additional language runtimes can be added as separate, pinned sandbox images without changing the repository-checkout contract. As with the existing CI, protect the default branch and govern workflow changes: a workflow modified on its own branch is not an independent trust boundary.
 
