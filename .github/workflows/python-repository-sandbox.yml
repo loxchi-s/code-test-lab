@@ -32,18 +32,31 @@ jobs:
           fetch-depth: 1
 
       - name: Validate target repository input
+        id: validate-target
         env:
           TARGET_REPOSITORY: ${{ inputs.repository }}
           TARGET_REF: ${{ inputs.ref }}
         run: |
+          trim() {
+            local value="$1"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"
+          TARGET_REF="$(trim "$TARGET_REF")"
           if [[ ! "$TARGET_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
             echo "::error::repository must use owner/repository format"
             exit 2
           fi
-          if [[ -z "${TARGET_REF//[[:space:]]/}" ]]; then
-            echo "::error::ref must not be empty"
+          if [[ -z "$TARGET_REF" || "$TARGET_REF" =~ [[:space:]] ]]; then
+            echo "::error::ref must be non-empty and must not contain whitespace"
             exit 2
           fi
+          {
+            printf 'repository=%s\n' "$TARGET_REPOSITORY"
+            printf 'ref=%s\n' "$TARGET_REF"
+          } >> "$GITHUB_OUTPUT"
           metadata="$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 15 \
             "https://api.github.com/repos/$TARGET_REPOSITORY")" || {
             echo "::error::target repository must be publicly accessible"
@@ -58,8 +71,8 @@ jobs:
       - name: Checkout target repository into isolated workspace
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ inputs.ref }}
+          repository: ${{ steps.validate-target.outputs.repository }}
+          ref: ${{ steps.validate-target.outputs.ref }}
           path: target-repository
           persist-credentials: false
           clean: true
