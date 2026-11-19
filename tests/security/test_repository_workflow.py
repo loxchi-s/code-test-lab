@@ -251,4 +251,4 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "15-minute dependency-preparation timeout" in readme
     assert "network-enabled preparation container" in readme
     assert 'pip install -e ".[dev]"' in readme
-    assert "network: none" in readme
+    assert "--network none" in readme
