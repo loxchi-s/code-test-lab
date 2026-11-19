@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import importlib.metadata as metadata
+from importlib import metadata
 import os
 import sys
 import sysconfig
@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             import pytest
 
             configure_target_import_paths(args.source, args.venv)
-    except (OSError, ValueError, metadata.PackageNotFoundError) as exc:
+    except (ImportError, OSError, ValueError, metadata.PackageNotFoundError) as exc:
         print(f"Trusted test runner configuration error: {exc}", file=sys.stderr)
         return 2
 
