@@ -106,19 +106,19 @@ jobs:
       - name: Create size-bounded target tmpfs volume
         id: prepare-workspace
         if: ${{ steps.docker-capabilities.outcome == 'success' }}
+        env:
+          TARGET_VOLUME: code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          volume="code-test-lab-target-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker volume create --driver local \
             --opt type=tmpfs --opt device=tmpfs \
-            --opt o=size=2g,uid=10001,gid=10001 "$volume"
-          printf 'volume=%s\n' "$volume" >> "$GITHUB_OUTPUT"
+            --opt o=size=2g,uid=10001,gid=10001 "$TARGET_VOLUME"
 
       - name: Prepare target dependencies in restricted network container
         id: prepare-dependencies
         if: ${{ steps.prepare-workspace.outcome == 'success' }}
         timeout-minutes: 15
         env:
-          TARGET_VOLUME: ${{ steps.prepare-workspace.outputs.volume }}
+          TARGET_VOLUME: code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}
           PREP_CONTAINER: python-target-prepare-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
@@ -157,7 +157,7 @@ jobs:
         if: ${{ steps.prepare-dependencies.outcome == 'success' }}
         timeout-minutes: 20
         env:
-          TARGET_VOLUME: ${{ steps.prepare-workspace.outputs.volume }}
+          TARGET_VOLUME: code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}
           TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
@@ -191,7 +191,7 @@ jobs:
         env:
           PREP_CONTAINER: python-target-prepare-${{ github.run_id }}-${{ github.run_attempt }}
           TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
-          TARGET_VOLUME: ${{ steps.prepare-workspace.outputs.volume }}
+          TARGET_VOLUME: code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           docker rm -f "$PREP_CONTAINER" "$TEST_CONTAINER" >/dev/null 2>&1 || true
           if [[ -n "$TARGET_VOLUME" && "$TARGET_VOLUME" == code-test-lab-target-* ]]; then
