@@ -16,20 +16,30 @@ def _workflow() -> dict:
 
 
 def _docker_run_tokens(script: str) -> list[str]:
-    """Extract only the continued docker run command, excluding surrounding shell text."""
+    """Parse a continued Docker command, including multiline quoted shell arguments."""
     lines = script.splitlines()
     start = next(
         index for index, line in enumerate(lines)
         if line.lstrip().startswith("docker run --rm")
     )
-    command_lines = [lines[start]]
-    while command_lines[-1].rstrip().endswith(chr(92)):
-        command_lines.append(lines[start + len(command_lines)])
-    command = " ".join(line.rstrip().removesuffix(chr(92)) for line in command_lines)
-    tokens = shlex.split(command)
-    if tokens[-1:] == ["2>&1"]:
-        tokens.pop()
-    return tokens
+    command_lines: list[str] = []
+    for line in lines[start:]:
+        command_lines.append(line)
+        if line.rstrip().endswith(chr(92)):
+            continue
+        command = " ".join(
+            item.rstrip().removesuffix(chr(92)) for item in command_lines
+        )
+        try:
+            tokens = shlex.split(command)
+        except ValueError as error:
+            if "No closing quotation" in str(error):
+                continue
+            raise
+        if tokens[-1:] == ["2>&1"]:
+            tokens.pop()
+        return tokens
+    raise AssertionError("Docker command did not terminate with balanced quoting")
 
 
 def _docker_options(tokens: list[str]) -> tuple[dict[str, list[str]], str, list[str]]:
