@@ -350,6 +350,23 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "--network none" in readme
 
 
+def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
+    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    steps = ci_workflow["jobs"]["quality"]["steps"]
+    smoke = next(
+        step for step in steps
+        if step.get("name") == "Smoke test trusted runner against poisoned prepared environment"
+    )
+    assert smoke["timeout-minutes"] == "3"
+    assert "untrusted pytest imported" in smoke["run"]
+    assert "exit 97" in smoke["run"]
+    assert "code_test_lab.trusted_test_runner" in smoke["run"]
+    assert "/usr/local/bin/python" in smoke["run"]
+    assert "--network none --read-only" in smoke["run"]
+    assert "dst=/sandbox,readonly" in smoke["run"]
+    assert "dst=/input/target,readonly" in smoke["run"]
+
+
 def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
     ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     steps = ci_workflow["jobs"]["quality"]["steps"]
