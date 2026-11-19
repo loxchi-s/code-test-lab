@@ -161,7 +161,7 @@ jobs:
             python -I -m code_test_lab.target_preparation --source /sandbox/source --commit-sha "$TARGET_COMMIT" --seed-version "$TARGET_SEED_VERSION" --env-file /tmp/scm-overrides
             while IFS= read -r override; do
               case "$override" in
-                SETUPTOOLS_SCM_PRETEND_VERSION|SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*|VCS_VERSIONING_PRETEND_VERSION_FOR_*)
+                SETUPTOOLS_SCM_PRETEND_VERSION=*|SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*|VCS_VERSIONING_PRETEND_VERSION_FOR_*)
                   export "$override"
                   ;;
                 *)

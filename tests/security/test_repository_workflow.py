@@ -223,7 +223,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "TARGET_SEED_VERSION" in prepare_command[1]
     assert "pip uninstall --yes" in prepare_command[1]
     assert "--no-deps --editable ." in prepare_command[1]
-    assert "SETUPTOOLS_SCM_PRETEND_VERSION" in prepare_command[1]
+    assert "SETUPTOOLS_SCM_PRETEND_VERSION=*|" in prepare_command[1]
     assert "VCS_VERSIONING_PRETEND_VERSION_FOR_" in prepare_command[1]
     assert "TARGET_COMMIT=${TARGET_COMMIT}" in prepare_options["--env"]
     assert "mktemp -d" in workspace["run"]
