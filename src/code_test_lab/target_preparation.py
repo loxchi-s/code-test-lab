@@ -53,10 +53,15 @@ def _scm_version_overrides(document: dict[str, Any], commit_sha: str) -> dict[st
         r"^\s*setuptools[-_]scm(?=\s*(?:\[|[<>=!~;\s]|$))",
         re.IGNORECASE,
     )
-    uses_setuptools_scm = any(
-        scm_requirement.match(requirement) for requirement in requirements
-    )
-    if not uses_setuptools_scm:
+    requirement_names = {
+        re.sub(r"[-_.]+", "-", match.group(1)).lower()
+        for requirement in requirements
+        if (match := re.match(
+            r"^\\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)",
+            requirement,
+        ))
+    }
+    if not requirement_names.intersection({"setuptools-scm", "hatch-vcs"}):
         return {}
 
     name = project.get("name")
