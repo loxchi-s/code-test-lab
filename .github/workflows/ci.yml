@@ -113,20 +113,20 @@ jobs:
           SANDBOX_CONTAINER: sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker rm -f "$SANDBOX_CONTAINER" || true
 
-      - name: Smoke test bounded tmpfs volume lifecycle
+      - name: Smoke test bounded host tmpfs workspace lifecycle
+        id: tmpfs-smoke
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
         timeout-minutes: 3
         env:
-          VOLUME_NAME: sandbox-volume-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          WRITE_CONTAINER: sandbox-volume-write-${{ github.run_id }}-${{ github.run_attempt }}
-          READ_CONTAINER: sandbox-volume-read-${{ github.run_id }}-${{ github.run_attempt }}
+          WRITE_CONTAINER: sandbox-tmpfs-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-tmpfs-read-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          docker volume create --driver local \
-            --opt type=tmpfs --opt device=tmpfs \
-            --opt o=size=64m,uid=10001,gid=10001 "$VOLUME_NAME"
+          workspace="$(mktemp -d "$RUNNER_TEMP/sandbox-tmpfs-smoke.XXXXXX")"
+          printf 'workspace=%s\n' "$workspace" >> "$GITHUB_OUTPUT"
+          sudo mount -t tmpfs -o size=64m,uid=10001,gid=10001,mode=0755 tmpfs "$workspace"
           docker run --rm --name "$WRITE_CONTAINER" \
             --network none --read-only \
-            --mount "type=volume,src=$VOLUME_NAME,dst=/workspace" \
+            --mount "type=bind,src=$workspace,dst=/workspace" \
             --tmpfs /tmp:rw,noexec,nosuid,size=16m \
             --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
@@ -134,7 +134,7 @@ jobs:
             -I -B -c 'from pathlib import Path; Path("/workspace/probe").write_text("ok")'
           docker run --rm --name "$READ_CONTAINER" \
             --network none --read-only \
-            --mount "type=volume,src=$VOLUME_NAME,dst=/workspace,readonly" \
+            --mount "type=bind,src=$workspace,dst=/workspace,readonly" \
             --tmpfs /tmp:rw,noexec,nosuid,size=16m \
             --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
@@ -148,17 +148,22 @@ jobs:
           except OSError as error:
               assert error.errno == errno.EROFS
           else:
-              raise AssertionError("volume mount was writable")'
+              raise AssertionError("workspace mount was writable")'
 
-      - name: Remove tmpfs volume smoke containers
+      - name: Remove tmpfs smoke containers and unmount workspace
         if: ${{ always() }}
         env:
-          VOLUME_NAME: sandbox-volume-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          WRITE_CONTAINER: sandbox-volume-write-${{ github.run_id }}-${{ github.run_attempt }}
-          READ_CONTAINER: sandbox-volume-read-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKSPACE: ${{ steps.tmpfs-smoke.outputs.workspace }}
+          WRITE_CONTAINER: sandbox-tmpfs-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-tmpfs-read-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           docker rm -f "$WRITE_CONTAINER" "$READ_CONTAINER" >/dev/null 2>&1 || true
-          docker volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
+          if [[ -n "$WORKSPACE" && "$WORKSPACE" == "$RUNNER_TEMP"/sandbox-tmpfs-smoke.* ]]; then
+            if mountpoint -q "$WORKSPACE"; then
+              sudo umount "$WORKSPACE"
+            fi
+            rmdir "$WORKSPACE" 2>/dev/null || true
+          fi
 
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
