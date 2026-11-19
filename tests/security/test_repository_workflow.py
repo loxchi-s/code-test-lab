@@ -305,7 +305,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_script.count("exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py") == 2
     assert "--target-pytest" in test_script
     assert "/sandbox/venv/bin/python" not in test_script
-    assert "/opt/trusted-runner" in dockerfile
+    assert "python -m venv --without-pip /opt/trusted-runner" in dockerfile
+    assert "--target /opt/trusted-runner/lib/python3.12/site-packages" in dockerfile
     runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
     assert 'parser.add_argument("--target-pytest", action="store_true")' in runner
     main_body = runner.split("def main", maxsplit=1)[1]
