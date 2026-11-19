@@ -18,9 +18,9 @@ permissions:
 
 jobs:
   python-sandbox:
-    name: Checkout and test external Python repository
+    name: Checkout, prepare, and test external Python repository
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -37,14 +37,8 @@ jobs:
           TARGET_REPOSITORY: ${{ inputs.repository }}
           TARGET_REF: ${{ inputs.ref }}
         run: |
-          trim() {
-            local value="$1"
-            value="${value#"${value%%[![:space:]]*}"}"
-            value="${value%"${value##*[![:space:]]}"}"
-            printf '%s' "$value"
-          }
-          TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"
-          TARGET_REF="$(trim "$TARGET_REF")"
+          TARGET_REPOSITORY="$(printf '%s' "$TARGET_REPOSITORY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          TARGET_REF="$(printf '%s' "$TARGET_REF" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
           if [[ ! "$TARGET_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
             echo "::error::repository must use owner/repository format"
             exit 2
@@ -83,7 +77,8 @@ jobs:
         working-directory: sandbox-harness
         run: docker build --pull --tag "code-test-lab-python:${GITHUB_SHA}" .
 
-      - name: Verify Docker daemon PID limit support
+      - name: Verify Docker daemon resource-limit support
+        id: docker-capabilities
         if: ${{ steps.build-image.outcome == 'success' }}
         timeout-minutes: 2
         run: |
@@ -97,10 +92,63 @@ jobs:
             echo "::error::Docker daemon must explicitly support PID, memory, and swap limits"
             exit 2
           fi
+          if jq -e '(.Warnings // []) | any(.[]; test("pids limit"; "i"))' <<< "$info" >/dev/null; then
+            echo "::error::Docker daemon reports that PID limits are unsupported"
+            exit 2
+          fi
+
+      - name: Create isolated target workspace
+        id: prepare-workspace
+        if: ${{ steps.docker-capabilities.outcome == 'success' }}
+        run: |
+          workspace="$(mktemp -d "$RUNNER_TEMP/python-target.XXXXXX")"
+          chmod 0777 "$workspace"
+          printf 'workspace=%s\n' "$workspace" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare target dependencies in restricted network container
+        id: prepare-dependencies
+        if: ${{ steps.prepare-workspace.outcome == 'success' }}
+        timeout-minutes: 15
+        env:
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+        run: |
+          marker="$(cat /proc/sys/kernel/random/uuid)"
+          restore_workflow_commands() {
+            local exit_code=$?
+            trap - EXIT
+            printf '\n::%s::\n' "$marker"
+            exit "$exit_code"
+          }
+          trap restore_workflow_commands EXIT
+          printf '::stop-commands::%s\n' "$marker"
+          docker run --rm \
+            --network bridge \
+            --read-only \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly" \
+            --mount "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox" \
+            --workdir /sandbox \
+            --tmpfs /tmp:rw,nosuid,size=1g \
+            --memory 4g --memory-swap 4g --cpus 2 --pids-limit 256 \
+            --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
+            --env HOME=/tmp --env PIP_NO_CACHE_DIR=1 --env PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --entrypoint /bin/sh \
+            "code-test-lab-python:${GITHUB_SHA}" \
+            -ec 'mkdir /sandbox/source
+            cp -a /input/target/. /sandbox/source/
+            cd /sandbox/source
+            python -m venv /sandbox/venv
+            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --editable ".[dev]"
+            /sandbox/venv/bin/python -c "import pytest; print(\"Prepared pytest from:\", pytest.__file__)"' 2>&1
 
       - name: Run target pytest suite without network or credentials
-        if: ${{ steps.build-image.outcome == 'success' }}
+        if: ${{ steps.prepare-dependencies.outcome == 'success' }}
         timeout-minutes: 20
+        env:
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
           restore_workflow_commands() {
@@ -114,19 +162,25 @@ jobs:
           docker run --rm \
             --network none \
             --read-only \
-            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/workspace/target,readonly" \
-            --workdir /workspace/target \
+            --mount "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly" \
+            --workdir /sandbox/source \
             --tmpfs /tmp:rw,noexec,nosuid,size=256m \
             --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
-            --env PYTHONDONTWRITEBYTECODE=1 \
-            --env PYTHONPYCACHEPREFIX=/tmp/pycache \
-            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-            --env XDG_CACHE_HOME=/tmp/cache \
+            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 --env XDG_CACHE_HOME=/tmp/cache \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
-            --entrypoint python \
+            --entrypoint /sandbox/venv/bin/python \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))' 2>&1
+            -I -B -m pytest -q -p no:cacheprovider /sandbox/source 2>&1
+
+      - name: Remove prepared target workspace
+        if: ${{ always() }}
+        env:
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+        run: |
+          if [[ -n "$TARGET_WORKSPACE" && "$TARGET_WORKSPACE" == "$RUNNER_TEMP"/python-target.* ]]; then
+            sudo rm -rf -- "$TARGET_WORKSPACE"
+          fi
