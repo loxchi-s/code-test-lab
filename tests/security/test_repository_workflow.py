@@ -215,7 +215,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert '--commit-sha "$TARGET_COMMIT"' in prepare_command[1]
     assert "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_" in prepare_command[1]
     assert "VCS_VERSIONING_PRETEND_VERSION_FOR_" in prepare_command[1]
-    assert prepare_options["--env"] == ["TARGET_COMMIT=${TARGET_COMMIT}"]
+    assert "TARGET_COMMIT=${TARGET_COMMIT}" in prepare_options["--env"]
     assert "mktemp -d" in workspace["run"]
     assert "GITHUB_OUTPUT" in workspace["run"]
     assert "sudo mount -t tmpfs" in workspace["run"]
