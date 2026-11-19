@@ -56,15 +56,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        configure_target_import_paths(
-            args.source, args.venv, target_pytest=args.target_pytest
-        )
+        if args.target_pytest:
+            configure_target_import_paths(args.source, args.venv, target_pytest=True)
+            import pytest
+        else:
+            # Load the trusted pytest before exposing any target-controlled paths.
+            import pytest
+
+            configure_target_import_paths(args.source, args.venv)
     except (OSError, ValueError) as exc:
         print(f"Trusted test runner configuration error: {exc}", file=sys.stderr)
         return 2
-
-    # Import after path setup only when pytest itself is the target under test.
-    import pytest
 
     return int(pytest.main([
         "-q",
