@@ -24,7 +24,7 @@ def configure_target_import_paths(source: Path, venv: Path) -> Path:
     sys.path.extend(
         str(path) for path in (source / "src", source) if path.is_dir()
     )
-    # Do not call site.addsitedir(): it executes .pth files from the untrusted environment.
+    # Avoid processing .pth files because they can execute arbitrary import statements.
     sys.path.append(str(site_packages[0]))
     return site_packages[0]
 
