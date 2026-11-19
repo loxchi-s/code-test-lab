@@ -307,3 +307,71 @@ def test_invalid_seed_version_is_rejected(tmp_path: Path) -> None:
         "seed distribution version",
         lambda: scm_version_overrides(metadata, COMMIT_SHA, "9.1.0;bad"),
     )
+
+
+def test_prepare_cli_writes_seeded_scm_environment_overrides(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    source = tmp_path / "target"
+    _write_project(source)
+    env_file = tmp_path / "scm-overrides"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "target_preparation",
+            "--source",
+            str(source),
+            "--commit-sha",
+            COMMIT_SHA,
+            "--seed-version",
+            "9.1.0",
+            "--env-file",
+            str(env_file),
+        ],
+    )
+
+    assert main() == 0
+    assert env_file.read_text(encoding="utf-8") == (
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\\n"
+        "VCS_VERSIONING_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\\n"
+    )
+
+
+def test_prepare_cli_rejects_invalid_seed_version(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    source = tmp_path / "target"
+    _write_project(source)
+    env_file = tmp_path / "scm-overrides"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "target_preparation",
+            "--source",
+            str(source),
+            "--commit-sha",
+            COMMIT_SHA,
+            "--seed-version",
+            "9.1.0;invalid",
+            "--env-file",
+            str(env_file),
+        ],
+    )
+
+    assert main() == 2
+    assert not env_file.exists()
+
+
+def test_dependency_requirements_reject_unicode_line_separators(tmp_path: Path) -> None:
+    for separator in ("\\u0085", "\\u2028", "\\u2029"):
+        source = tmp_path / f"target-{ord(separator):04x}"
+        _write_project(source, dependencies=(f"iniconfig>=2{separator}--index-url=https://invalid",))
+        _assert_raises(
+            ValueError,
+            "unsafe requirement line",
+            lambda path=source: prepare_target_source(
+                path, tmp_path / f"prepared-{path.name}", COMMIT_SHA
+            ),
+        )
