@@ -8,7 +8,7 @@ import shutil
 import sys
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 _MAX_PYPROJECT_BYTES = 1024 * 1024
@@ -56,6 +56,44 @@ def _validated_requirements(value: Any, field: str) -> tuple[str, ...]:
         _requirement_name(requirement)
         requirements.append(requirement)
     return tuple(requirements)
+
+
+def _validate_setuptools_package_dir(tool: dict[str, Any]) -> None:
+    """Reject package-dir layouts that the isolated runner cannot import safely."""
+    setuptools = tool.get("setuptools", {})
+    if not isinstance(setuptools, dict):
+        raise TypeError("target tool.setuptools configuration must be a table")
+
+    package_dir = setuptools.get("package-dir", {})
+    if not isinstance(package_dir, dict):
+        raise TypeError("target tool.setuptools.package-dir must be a table")
+
+    for package, directory in package_dir.items():
+        if not isinstance(package, str) or not isinstance(directory, str):
+            raise ValueError("target package-dir mappings must contain string keys and paths")
+        if "\\" in directory or ":" in directory:
+            raise ValueError("target package-dir paths must use relative POSIX paths")
+
+        mapped_path = PurePosixPath(directory)
+        if mapped_path.is_absolute() or ".." in mapped_path.parts:
+            raise ValueError("target package-dir paths must not be absolute or traverse parent directories")
+
+        package_parts = package.split(".") if package else []
+        if package_parts and any(not part.isidentifier() for part in package_parts):
+            raise ValueError("target package-dir keys must be valid dotted Python package names")
+        if len(mapped_path.parts) < len(package_parts):
+            raise ValueError("target package-dir path does not contain its package mapping")
+
+        root_parts = (
+            mapped_path.parts[:-len(package_parts)]
+            if package_parts
+            else mapped_path.parts
+        )
+        import_root = PurePosixPath(*root_parts).as_posix() if root_parts else "."
+        if import_root not in {".", "src"}:
+            raise ValueError(
+                "target package-dir mappings must resolve under the project root or src import roots"
+            )
 
 
 def _read_project_metadata(source: Path) -> dict[str, Any]:
@@ -119,6 +157,7 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     tool = document.get("tool", {})
     if not isinstance(tool, dict):
         raise TypeError("target tool configuration must be a table")
+    _validate_setuptools_package_dir(tool)
     hatch = tool.get("hatch", {})
     hatch_version = hatch.get("version", {}) if isinstance(hatch, dict) else {}
     if (
