@@ -171,8 +171,9 @@ editing, debugging, and running ordinary unit tests. Create a Codespace from the
 the repository's `.[dev]` dependencies during setup.
 
 Codespaces is a development environment, not the untrusted-code sandbox and not a GitHub Actions
-runner. Do not use it with untrusted external repositories or untrusted branches, including unreviewed pull-request branches, or replace the restricted
-container workflow. This configuration does not enable Docker-in-Docker; use GitHub Actions for
+runner. Do not use it to execute code from untrusted external repositories or untrusted
+branches, including unreviewed pull-request branches, or to replace the restricted container
+workflow. This configuration does not enable Docker-in-Docker; use GitHub Actions for
 the authoritative sandbox and CI checks.
 
 Cost controls:
