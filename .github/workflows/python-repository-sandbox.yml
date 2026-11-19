@@ -147,7 +147,18 @@ jobs:
             --user 10001:10001 \
             --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --destination /sandbox/source --commit-sha "$TARGET_COMMIT" --env-file /tmp/scm-overrides
+            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --destination /sandbox/source --commit-sha "$TARGET_COMMIT" --requirements-file /tmp/target-requirements.txt --distribution-file /tmp/target-distribution
+            cd /sandbox/source
+            python -m venv /sandbox/venv
+            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --requirement /tmp/target-requirements.txt
+            IFS= read -r TARGET_DISTRIBUTION < /tmp/target-distribution
+            if /sandbox/venv/bin/python -I -c "import importlib.metadata as metadata, sys; metadata.version(sys.argv[1])" "$TARGET_DISTRIBUTION" >/dev/null 2>&1; then
+              TARGET_SEED_VERSION=$(/sandbox/venv/bin/python -I -c "import importlib.metadata as metadata, sys; print(metadata.version(sys.argv[1]))" "$TARGET_DISTRIBUTION")
+              /sandbox/venv/bin/python -m pip uninstall --yes "$TARGET_DISTRIBUTION"
+            else
+              TARGET_SEED_VERSION=""
+            fi
+            python -I -m code_test_lab.target_preparation --source /sandbox/source --commit-sha "$TARGET_COMMIT" --seed-version "$TARGET_SEED_VERSION" --env-file /tmp/scm-overrides
             while IFS= read -r override; do
               case "$override" in
                 SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*|VCS_VERSIONING_PRETEND_VERSION_FOR_*)
@@ -159,10 +170,8 @@ jobs:
                   ;;
               esac
             done < /tmp/scm-overrides
-            cd /sandbox/source
-            python -m venv /sandbox/venv
-            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --editable ".[dev]"
-            /sandbox/venv/bin/python -c "from pathlib import Path; import pytest; print(\"Prepared pytest from:\", pytest.__file__); source = Path(\"/sandbox/source/src\"); module = Path(pytest.__file__).resolve(); assert not (source / \"pytest\" / \"__init__.py\").is_file() or module.is_relative_to(source), \"pytest did not resolve from the target source tree\""' 2>&1
+            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --no-deps --editable .
+            /sandbox/venv/bin/python -c "from pathlib import Path; import pytest; print(\"Prepared pytest from:\", pytest.__file__); source = Path(\"/sandbox/source\"); module = Path(pytest.__file__).resolve(); package_dirs = (source / \"src\", source); assert not any((root / \"pytest\" / \"__init__.py\").is_file() for root in package_dirs) or any(module.is_relative_to(root) for root in package_dirs), \"pytest did not resolve from the target source tree\""' 2>&1
 
       - name: Run target pytest suite without network or credentials
         if: ${{ steps.prepare-dependencies.outcome == 'success' }}

@@ -183,8 +183,12 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
 
     assert prepare["timeout-minutes"] == "15"
     assert "trap restore_workflow_commands EXIT" in prepare["run"]
-    assert "pip install --no-cache-dir --only-binary=:all:" in prepare["run"]
-    assert '--editable ".[dev]"' in prepare["run"]
+    assert "--requirements-file /tmp/target-requirements.txt" in prepare["run"]
+    assert "--distribution-file /tmp/target-distribution" in prepare["run"]
+    assert "--requirement /tmp/target-requirements.txt" in prepare["run"]
+    assert "TARGET_SEED_VERSION" in prepare["run"]
+    assert '--seed-version "$TARGET_SEED_VERSION"' in prepare["run"]
+    assert "--no-deps --editable ." in prepare["run"]
     assert "python -m venv /sandbox/venv" in prepare["run"]
     assert "TARGET_COMMIT" in prepare["env"]
     assert "GITHUB_TOKEN" not in prepare["run"]
@@ -213,8 +217,10 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_command[:1] == ["-ec"]
     assert "code_test_lab.target_preparation --source /input/target" in prepare_command[1]
     assert "--destination /sandbox/source" in prepare_command[1]
-    assert "--destination /sandbox/source" in prepare_command[1]
+    assert "--requirements-file /tmp/target-requirements.txt" in prepare_command[1]
+    assert "--distribution-file /tmp/target-distribution" in prepare_command[1]
     assert '--commit-sha "$TARGET_COMMIT"' in prepare_command[1]
+    assert "TARGET_SEED_VERSION" in prepare_command[1]
     assert "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_" in prepare_command[1]
     assert "VCS_VERSIONING_PRETEND_VERSION_FOR_" in prepare_command[1]
     assert "TARGET_COMMIT=${TARGET_COMMIT}" in prepare_options["--env"]
@@ -246,6 +252,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--security-opt"] == ["no-new-privileges"]
     assert test_options["--user"] == ["10001:10001"]
     assert test_options["--entrypoint"] == ["/sandbox/venv/bin/python"]
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
     assert test_command[:4] == ["-I", "-B", "-m", "pytest"]
     assert test_command[-1] == "/sandbox/source"
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
@@ -283,7 +291,9 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "Only public target repositories are accepted" in readme
     assert "15-minute dependency-preparation timeout" in readme
     assert "network-enabled preparation container" in readme
-    assert 'pip install -e ".[dev]"' in readme
+    assert "--requirement /tmp/target-requirements.txt" in readme
+    assert "--no-deps --editable ." in readme
+    assert "seed distribution version" in readme
     assert "--network none" in readme
 
 
