@@ -161,3 +161,23 @@ tests/architecture/        Static dependency-boundary and cycle checks
 Report Designed, Implemented, Tested, and Validated separately. A green GitHub Actions run
 validates only the checks executed by that workflow; it does not prove Sandbox provisioning or
 interactive Chat-to-Sandbox connectivity.
+
+
+## GitHub Codespaces (development only)
+
+The `.devcontainer/devcontainer.json` file provides a Python 3.12 development environment for
+editing, debugging, and running ordinary unit tests. Create a Codespace from the repository's
+**Code → Codespaces** menu and select the branch you want to work on. The environment installs
+the repository's `.[dev]` dependencies during setup.
+
+Codespaces is a development environment, not the untrusted-code sandbox and not a GitHub Actions
+runner. Do not use it to execute untrusted external repositories or replace the restricted
+container workflow. This configuration does not enable Docker-in-Docker; use GitHub Actions for
+the authoritative sandbox and CI checks.
+
+Cost controls:
+- No Codespaces Prebuild configuration or Prebuild workflow is enabled by this repository.
+- Stop a Codespace when you are not actively using it to stop ongoing compute usage.
+- Delete Codespaces that are no longer needed to release their retained storage.
+- Compute and storage charges depend on the account's included quota and current GitHub pricing.
+  Check the account's Codespaces usage and spending limit before creating or resizing a Codespace.
