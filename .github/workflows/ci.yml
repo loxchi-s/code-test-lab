@@ -113,6 +113,53 @@ jobs:
           SANDBOX_CONTAINER: sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker rm -f "$SANDBOX_CONTAINER" || true
 
+      - name: Smoke test bounded tmpfs volume lifecycle
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          VOLUME_NAME: sandbox-volume-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          WRITE_CONTAINER: sandbox-volume-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-volume-read-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker volume create --driver local \
+            --opt type=tmpfs --opt device=tmpfs \
+            --opt o=size=64m,uid=10001,gid=10001 "$VOLUME_NAME"
+          docker run --rm --name "$WRITE_CONTAINER" \
+            --network none --read-only \
+            --mount "type=volume,src=$VOLUME_NAME,dst=/workspace" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint python "code-test-lab:${{ github.sha }}" \
+            -I -B -c 'from pathlib import Path; Path("/workspace/probe").write_text("ok")'
+          docker run --rm --name "$READ_CONTAINER" \
+            --network none --read-only \
+            --mount "type=volume,src=$VOLUME_NAME,dst=/workspace,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint python "code-test-lab:${{ github.sha }}" \
+            -I -B -c 'from pathlib import Path
+          import errno
+          probe = Path("/workspace/probe")
+          assert probe.read_text() == "ok"
+          try:
+              probe.write_text("blocked")
+          except OSError as error:
+              assert error.errno == errno.EROFS
+          else:
+              raise AssertionError("volume mount was writable")'
+
+      - name: Remove tmpfs volume smoke containers
+        if: ${{ always() }}
+        env:
+          VOLUME_NAME: sandbox-volume-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          WRITE_CONTAINER: sandbox-volume-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-volume-read-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f "$WRITE_CONTAINER" "$READ_CONTAINER" >/dev/null 2>&1 || true
+          docker volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
+
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
