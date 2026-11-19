@@ -75,8 +75,8 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
     assert "https://api.github.com/repos/$TARGET_REPOSITORY" in validate["run"]
     assert "jq -r '.visibility // \"unknown\"'" in validate["run"]
     assert '[[ "$visibility" != "public" ]]' in validate["run"]
-    assert "TARGET_REPOSITORY=" in validate["run"]
-    assert "TARGET_REF=" in validate["run"]
+    assert 'TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"' in validate["run"]
+    assert 'TARGET_REF="$(trim "$TARGET_REF")"' in validate["run"]
     assert '>> "$GITHUB_OUTPUT"' in validate["run"]
     target_checkout = next(
         step for step in job["steps"]
@@ -99,7 +99,7 @@ def test_repository_validation_rejects_private_and_blank_refs(tmp_path: Path) ->
         "TARGET_REF": "main",
         "GITHUB_OUTPUT": str(output_file),
     })
-    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
+    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
 
     def run_validation(
         visibility: str,
