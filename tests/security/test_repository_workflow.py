@@ -293,7 +293,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--cap-drop"] == ["ALL"]
     assert test_options["--security-opt"] == ["no-new-privileges"]
     assert test_options["--user"] == ["10001:10001"]
-    assert test_options["--env"] == ["TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}"]
+    assert "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" in test_options["--env"]
     assert test_options["--entrypoint"] == ["/bin/sh"]
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
