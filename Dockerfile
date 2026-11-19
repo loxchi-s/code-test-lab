@@ -11,7 +11,10 @@ COPY .github/workflows/ci.yml ./.github/workflows/ci.yml
 COPY .github/workflows/workflow-security.yml ./.github/workflows/workflow-security.yml
 COPY .github/workflows/python-repository-sandbox.yml ./.github/workflows/python-repository-sandbox.yml
 
-RUN python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
     && python -m pip install --no-cache-dir '.[dev]' \
     && pytest_version="$(python -I -c 'import importlib.metadata as metadata; print(metadata.version("pytest"))')" \
     && python -m venv --without-pip /opt/trusted-runner \
