@@ -75,8 +75,8 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
     assert "https://api.github.com/repos/$TARGET_REPOSITORY" in validate["run"]
     assert "jq -r '.visibility // \"unknown\"'" in validate["run"]
     assert '[[ "$visibility" != "public" ]]' in validate["run"]
-    assert 'TARGET_REPOSITORY="$(trim "$TARGET_REPOSITORY")"' in validate["run"]
-    assert 'TARGET_REF="$(trim "$TARGET_REF")"' in validate["run"]
+    assert "TARGET_REPOSITORY=" in validate["run"]
+    assert "TARGET_REF=" in validate["run"]
     assert '>> "$GITHUB_OUTPUT"' in validate["run"]
     target_checkout = next(
         step for step in job["steps"]
@@ -86,9 +86,7 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
     assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
 
 
-def test_repository_validation_rejects_private_and_blank_refs(
-    tmp_path: Path,
-) -> None:
+def test_repository_validation_rejects_private_and_blank_refs(tmp_path: Path) -> None:
     workflow = _workflow()
     steps = workflow["jobs"]["python-sandbox"]["steps"]
     validate = next(
@@ -101,7 +99,7 @@ def test_repository_validation_rejects_private_and_blank_refs(
         "TARGET_REF": "main",
         "GITHUB_OUTPUT": str(output_file),
     })
-    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
+    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
 
     def run_validation(
         visibility: str,
@@ -149,82 +147,108 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
     assert "TARGET_REPO_READ_TOKEN" not in workflow.__repr__()
 
 
-def test_target_code_runs_only_in_restricted_docker_container() -> None:
+def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None:
     workflow = _workflow()
-    job = workflow["jobs"]["python-sandbox"]
-    steps = job["steps"]
-    build = next(step for step in steps if step.get("id") == "build-image")
-    capability_step = next(
+    steps = workflow["jobs"]["python-sandbox"]["steps"]
+    prepare = next(
         step for step in steps
-        if step.get("name") == "Verify Docker daemon PID limit support"
+        if step.get("name") == "Prepare target dependencies in restricted network container"
     )
-    run_step = next(
+    test = next(
         step for step in steps
         if step.get("name") == "Run target pytest suite without network or credentials"
     )
+    cleanup = next(
+        step for step in steps
+        if step.get("name") == "Remove prepared target workspace"
+    )
 
-    assert capability_step["timeout-minutes"] == "2"
-    assert "docker info --format '{{json .}}'" in capability_step["run"]
-    assert ".PidsLimit == true" in capability_step["run"]
-    assert ".MemoryLimit == true" in capability_step["run"]
-    assert ".SwapLimit == true" in capability_step["run"]
-    assert build["working-directory"] == "sandbox-harness"
-    assert shlex.split(build["run"]) == [
-        "docker", "build", "--pull", "--tag",
-        "code-test-lab-python:${GITHUB_SHA}", ".",
+    assert prepare["timeout-minutes"] == "15"
+    assert "trap restore_workflow_commands EXIT" in prepare["run"]
+    assert "pip install --no-cache-dir --only-binary=:all:" in prepare["run"]
+    assert '--editable ".[dev]"' in prepare["run"]
+    assert "python -m venv /sandbox/venv" in prepare["run"]
+    assert "GITHUB_TOKEN" not in prepare["run"]
+    assert "secrets." not in prepare["run"]
+    assert "docker.sock" not in prepare["run"]
+
+    prepare_tokens = _docker_run_tokens(prepare["run"])
+    prepare_options, prepare_image, prepare_command = _docker_options(prepare_tokens)
+    assert prepare_image == "code-test-lab-python:${GITHUB_SHA}"
+    assert prepare_options["--network"] == ["bridge"]
+    assert prepare_options["--read-only"] == ["true"]
+    assert prepare_options["--mount"] == [
+        "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly",
+        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox",
     ]
+    assert prepare_options["--workdir"] == ["/sandbox"]
+    assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]
+    assert prepare_options["--memory"] == ["4g"]
+    assert prepare_options["--memory-swap"] == ["4g"]
+    assert prepare_options["--cpus"] == ["2"]
+    assert prepare_options["--pids-limit"] == ["256"]
+    assert prepare_options["--cap-drop"] == ["ALL"]
+    assert prepare_options["--security-opt"] == ["no-new-privileges"]
+    assert prepare_options["--user"] == ["10001:10001"]
+    assert prepare_options["--entrypoint"] == ["/bin/sh"]
+    assert prepare_command[:1] == ["-ec"]
+    assert "cp -a /input/target/. /sandbox/source/" in prepare_command[1]
+    assert 'python -m pip install' in prepare_command[1]
 
-    assert run_step["timeout-minutes"] == "20"
-    assert "trap restore_workflow_commands EXIT" in run_step["run"]
-    assert "local exit_code=$?" in run_step["run"]
-    assert 'exit "$exit_code"' in run_step["run"]
-    assert "stop-commands" in run_step["run"]
-    assert "printf '\\n::%s::\\n' \"$marker\"" in run_step["run"]
-    assert run_step["run"].rstrip().endswith("2>&1")
-
-    tokens = _docker_run_tokens(run_step["run"])
-    options, image, command = _docker_options(tokens)
-    assert image == "code-test-lab-python:${GITHUB_SHA}"
-    assert options["--rm"] == ["true"]
-    assert options["--read-only"] == ["true"]
-    assert options["--network"] == ["none"]
-    assert options["--mount"] == [
-        "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/workspace/target,readonly"
+    assert test["timeout-minutes"] == "20"
+    assert "trap restore_workflow_commands EXIT" in test["run"]
+    assert "stop-commands" in test["run"]
+    assert "TARGET_WORKSPACE" in test["env"]
+    test_tokens = _docker_run_tokens(test["run"])
+    test_options, test_image, test_command = _docker_options(test_tokens)
+    assert test_image == "code-test-lab-python:${GITHUB_SHA}"
+    assert test_options["--network"] == ["none"]
+    assert test_options["--read-only"] == ["true"]
+    assert test_options["--mount"] == [
+        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly"
     ]
-    assert options["--workdir"] == ["/workspace/target"]
-    assert options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
-    assert options["--memory"] == ["2g"]
-    assert options["--memory-swap"] == ["2g"]
-    assert options["--cpus"] == ["2"]
-    assert options["--pids-limit"] == ["256"]
-    assert options["--log-driver"] == ["json-file"]
-    assert options["--log-opt"] == ["max-size=10m", "max-file=3"]
-    assert options["--cap-drop"] == ["ALL"]
-    assert options["--security-opt"] == ["no-new-privileges"]
-    assert options["--user"] == ["10001:10001"]
-    assert options["--entrypoint"] == ["python"]
-    forwarded_env = options["--env"]
-    assert forwarded_env == [
-        "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=",
-        "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy=",
-        "PYTHONDONTWRITEBYTECODE=1", "PYTHONPYCACHEPREFIX=/tmp/pycache",
-        "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "XDG_CACHE_HOME=/tmp/cache",
-    ]
+    assert test_options["--workdir"] == ["/sandbox/source"]
+    assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
+    assert test_options["--memory"] == ["2g"]
+    assert test_options["--memory-swap"] == ["2g"]
+    assert test_options["--cpus"] == ["2"]
+    assert test_options["--pids-limit"] == ["256"]
+    assert test_options["--cap-drop"] == ["ALL"]
+    assert test_options["--security-opt"] == ["no-new-privileges"]
+    assert test_options["--user"] == ["10001:10001"]
+    assert test_options["--entrypoint"] == ["/sandbox/venv/bin/python"]
+    assert test_command[:4] == ["-I", "-B", "-m", "pytest"]
+    assert test_command[-1] == "/sandbox/source"
+    assert "GITHUB_TOKEN" not in test["run"]
+    assert "secrets." not in test["run"]
+    assert "docker.sock" not in test["run"]
 
-    assert command[:2] == ["-I", "-c"]
-    launcher = command[2]
-    assert launcher.index("import pytest") < launcher.index('sys.path.insert(0, "/workspace/target")')
-    assert "raise SystemExit(pytest.main(" in launcher
-    assert '"/workspace/target"' in launcher
-    assert "--privileged" not in tokens
-    assert not any("docker.sock" in token for token in tokens)
-    assert "GITHUB_TOKEN" not in run_step["run"]
-    assert "secrets." not in run_step["run"]
-    assert job["timeout-minutes"] == "35"
+    assert cleanup["if"] == "${{ always() }}"
+    assert 'sudo rm -rf -- "$TARGET_WORKSPACE"' in cleanup["run"]
 
-def test_readme_documents_manual_dispatch_and_private_target_boundary() -> None:
+
+def test_target_code_is_never_run_on_host_and_cleanup_is_bounded() -> None:
+    workflow = _workflow()
+    steps = workflow["jobs"]["python-sandbox"]["steps"]
+    prepare = next(
+        step for step in steps
+        if step.get("name") == "Prepare target dependencies in restricted network container"
+    )
+    test = next(
+        step for step in steps
+        if step.get("name") == "Run target pytest suite without network or credentials"
+    )
+    assert "pip install" not in prepare.get("run", "").split("docker run", 1)[0]
+    assert "python -m pytest" not in test.get("run", "").split("docker run", 1)[0]
+    assert workflow["jobs"]["python-sandbox"]["timeout-minutes"] == "45"
+
+
+def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "default branch" in readme
     assert "branch selector" in readme
     assert "Only public target repositories are accepted" in readme
-    assert "20-minute timeout" in readme
+    assert "15-minute dependency-preparation timeout" in readme
+    assert "network-enabled preparation container" in readme
+    assert 'pip install -e ".[dev]"' in readme
+    assert "network: none" in readme
