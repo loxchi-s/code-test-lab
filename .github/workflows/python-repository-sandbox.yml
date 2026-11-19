@@ -142,7 +142,7 @@ jobs:
             cd /sandbox/source
             python -m venv /sandbox/venv
             /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --editable ".[dev]"
-            /sandbox/venv/bin/python -c 'from pathlib import Path; import pytest; print("Prepared pytest from:", pytest.__file__); source = Path("/sandbox/source/src"); module = Path(pytest.__file__).resolve(); assert not (source / "pytest" / "__init__.py").is_file() or module.is_relative_to(source), "pytest did not resolve from the target source tree"'' 2>&1
+            /sandbox/venv/bin/python -c "from pathlib import Path; import pytest; print('Prepared pytest from:', pytest.__file__); source = Path('/sandbox/source/src'); module = Path(pytest.__file__).resolve(); assert not (source / 'pytest' / '__init__.py').is_file() or module.is_relative_to(source), 'pytest did not resolve from the target source tree'"' 2>&1
 
       - name: Run target pytest suite without network or credentials
         if: ${{ steps.prepare-dependencies.outcome == 'success' }}
