@@ -55,7 +55,8 @@ jobs:
             --user 10001:10001 \
             --entrypoint /bin/sh \
             code-test-lab:${{ github.sha }} \
-            -ec 'ruff check --no-cache src tests
+            -ec 'ruff check --diff tests/unit/test_target_preparation.py || true
+            ruff check --no-cache src tests
             lint-imports --no-cache
             python -m pytest -q -p no:cacheprovider
             python -m compileall -q src
