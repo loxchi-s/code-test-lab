@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import sysconfig
+import types
 from importlib import metadata
 from pathlib import Path
 
@@ -78,8 +79,17 @@ def configure_target_pytest_version(site_packages: Path) -> None:
     # into the read-only target checkout.
     import _pytest
 
+    version_tuple = tuple(version.release)
+    version_module = types.ModuleType("_pytest._version")
+    version_module.version = str(version)
+    version_module.version_tuple = version_tuple
+    # Some pytest modules import the generated module directly, not only the
+    # attributes re-exported by _pytest. Recreate that trusted metadata module
+    # in memory so the read-only target checkout remains untouched.
+    sys.modules["_pytest._version"] = version_module
+    _pytest._version = version_module
     _pytest.__version__ = str(version)
-    _pytest.version_tuple = tuple(version.release)
+    _pytest.version_tuple = version_tuple
 
 
 def main(argv: list[str] | None = None) -> int:
