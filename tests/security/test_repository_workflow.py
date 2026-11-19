@@ -236,15 +236,18 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "trap restore_workflow_commands EXIT" in test["run"]
     assert "stop-commands" in test["run"]
     assert "TARGET_WORKSPACE" in test["env"]
+    assert "TARGET_SOURCE" in test["env"]
     test_tokens = _docker_run_tokens(test["run"])
     test_options, test_image, test_command = _docker_options(test_tokens)
     assert test_image == "code-test-lab-python:${GITHUB_SHA}"
     assert test_options["--network"] == ["none"]
     assert test_options["--read-only"] == ["true"]
     assert test_options["--mount"] == [
-        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly"
+        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly",
+        "type=bind,src=${TARGET_SOURCE},dst=/input/target,readonly",
     ]
-    assert test_options["--workdir"] == ["/sandbox/source"]
+    assert test_options["--workdir"] == ["/input/target"]
+    assert test_options["--mount"][1].endswith(",readonly")
     assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
     assert test_options["--memory"] == ["2g"]
     assert test_options["--memory-swap"] == ["2g"]
@@ -257,7 +260,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
     assert test_command[:4] == ["-I", "-B", "-m", "pytest"]
-    assert test_command[-1] == "/sandbox/source"
+    assert test_command[-1] == "/input/target"
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]

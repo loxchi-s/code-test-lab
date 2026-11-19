@@ -178,6 +178,7 @@ jobs:
         timeout-minutes: 20
         env:
           TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+          TARGET_SOURCE: ${{ github.workspace }}/target-repository
           TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
@@ -193,7 +194,8 @@ jobs:
             --network none \
             --read-only \
             --mount "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly" \
-            --workdir /sandbox/source \
+            --mount "type=bind,src=${TARGET_SOURCE},dst=/input/target,readonly" \
+            --workdir /input/target \
             --tmpfs /tmp:rw,noexec,nosuid,size=256m \
             --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
@@ -204,7 +206,7 @@ jobs:
             --user 10001:10001 \
             --entrypoint /sandbox/venv/bin/python \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -I -B -m pytest -q -p no:cacheprovider /sandbox/source 2>&1
+            -I -B -m pytest -q -p no:cacheprovider /input/target 2>&1
 
       - name: Remove prepared target containers and unmount tmpfs workspace
         if: ${{ always() }}
