@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from importlib import metadata
 import os
 import sys
 import sysconfig
+from importlib import metadata
 from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
