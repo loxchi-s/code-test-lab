@@ -1,15 +1,16 @@
-"""Run target tests with the harness-owned pytest installation."""
+"""Run target tests with the harness-owned Python interpreter."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+import sysconfig
 from pathlib import Path
 
-import pytest
 
-
-def configure_target_import_paths(source: Path, venv: Path) -> Path:
+def configure_target_import_paths(
+    source: Path, venv: Path, *, target_pytest: bool = False
+) -> Path:
     """Expose target source and dependencies without processing untrusted .pth files."""
     source = source.resolve(strict=True)
     venv = venv.resolve(strict=True)
@@ -20,27 +21,50 @@ def configure_target_import_paths(source: Path, venv: Path) -> Path:
     if len(site_packages) != 1 or not site_packages[0].is_dir():
         raise ValueError("prepared virtual environment must contain exactly one site-packages directory")
 
-    # Keep the harness interpreter and pytest dependencies ahead of target-controlled paths.
-    sys.path.extend(
+    target_paths = [
         str(path) for path in (source / "src", source) if path.is_dir()
-    )
-    # Avoid processing .pth files because they can execute arbitrary import statements.
-    sys.path.append(str(site_packages[0]))
+    ]
+    target_paths.append(str(site_packages[0]))
+
+    if target_pytest:
+        trusted_site = Path(sysconfig.get_paths()["purelib"]).resolve()
+        trusted_index = next(
+            (
+                index
+                for index, entry in enumerate(sys.path)
+                if Path(entry).resolve() == trusted_site
+            ),
+            None,
+        )
+        if trusted_index is None:
+            raise ValueError("trusted interpreter site-packages directory is not on sys.path")
+        sys.path[trusted_index:trusted_index] = target_paths
+    else:
+        # Import trusted pytest before adding target-controlled paths.
+        sys.path.extend(target_paths[:-1])
+        sys.path.append(target_paths[-1])
+
     return site_packages[0]
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the target's pytest suite using the trusted harness pytest package."""
+    """Run target tests with the immutable harness interpreter."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--venv", type=Path, required=True)
+    parser.add_argument("--target-pytest", action="store_true")
     args = parser.parse_args(argv)
 
     try:
-        configure_target_import_paths(args.source, args.venv)
+        configure_target_import_paths(
+            args.source, args.venv, target_pytest=args.target_pytest
+        )
     except (OSError, ValueError) as exc:
         print(f"Trusted test runner configuration error: {exc}", file=sys.stderr)
         return 2
+
+    # Import after path setup only when pytest itself is the target under test.
+    import pytest
 
     return int(pytest.main([
         "-q",
