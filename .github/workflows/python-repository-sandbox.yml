@@ -110,7 +110,7 @@ jobs:
           volume="code-test-lab-target-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker volume create --driver local \
             --opt type=tmpfs --opt device=tmpfs \
-            --opt o=size=4g,uid=10001,gid=10001 "$volume"
+            --opt o=size=2g,uid=10001,gid=10001 "$volume"
           printf 'volume=%s\n' "$volume" >> "$GITHUB_OUTPUT"
 
       - name: Prepare target dependencies in restricted network container
@@ -147,7 +147,7 @@ jobs:
             --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
             -ec 'mkdir /sandbox/source
-            cp -a /input/target/. /sandbox/source/
+            cp -R /input/target/. /sandbox/source/
             cd /sandbox/source
             python -m venv /sandbox/venv
             /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --editable ".[dev]"
