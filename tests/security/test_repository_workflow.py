@@ -212,6 +212,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "code_test_lab.target_preparation --source /input/target" in prepare_command[1]
+    assert "--destination /sandbox/source" in prepare_command[1]
     assert '--commit-sha "$TARGET_COMMIT"' in prepare_command[1]
     assert "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_" in prepare_command[1]
     assert "VCS_VERSIONING_PRETEND_VERSION_FOR_" in prepare_command[1]
