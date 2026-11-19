@@ -161,7 +161,7 @@ jobs:
             --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
             --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
-            -ec 'exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner --source /input/target --venv /sandbox/venv'
+            -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv'
           docker run --rm --name "$container-target-pytest" \
             --network none --read-only \
             --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
