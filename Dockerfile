@@ -14,8 +14,8 @@ COPY .github/workflows/python-repository-sandbox.yml ./.github/workflows/python-
 RUN python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
     && python -m pip install --no-cache-dir '.[dev]' \
     && pytest_version="$(python -I -c 'import importlib.metadata as metadata; print(metadata.version("pytest"))')" \
-    && python -m venv /opt/trusted-runner \
-    && /opt/trusted-runner/bin/python -m pip install --no-cache-dir "pytest==${pytest_version}" \
+    && python -m venv --without-pip /opt/trusted-runner \
+    && python -m pip install --no-cache-dir --target /opt/trusted-runner/lib/python3.12/site-packages "pytest==${pytest_version}" \
     && useradd --uid 10001 --create-home runner \
     && chown -R runner:runner /workspace
 
