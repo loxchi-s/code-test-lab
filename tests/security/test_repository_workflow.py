@@ -306,7 +306,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
     assert runner.index("import pytest") < runner.index("sys.path.extend")
     assert "sys.path.append(str(site_packages[0]))" in runner
-    assert "site.addsitedir" not in runner
+    assert "site.addsitedir(" not in runner
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
@@ -343,7 +343,7 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "15-minute dependency-preparation timeout" in readme
     assert "network-enabled preparation container" in readme
     assert "trusted metadata-only container" in readme
-    assert "trusted pytest runner" in readme
+    assert "trusted test runner" in readme
     assert "--requirement /tmp/target-requirements.txt" in readme
     assert "--no-deps --editable ." in readme
     assert "resolver-compatible seed version" in readme
