@@ -150,6 +150,9 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
 def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None:
     workflow = _workflow()
     steps = workflow["jobs"]["python-sandbox"]["steps"]
+    workspace = next(
+        step for step in steps if step.get("name") == "Create isolated target workspace"
+    )
     prepare = next(
         step for step in steps
         if step.get("name") == "Prepare target dependencies in restricted network container"
@@ -193,7 +196,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "cp -a /input/target/. /sandbox/source/" in prepare_command[1]
-    assert "sudo chown" not in prepare["run"]
+    assert 'sudo chown 10001:10001 "$workspace"' in workspace["run"]
+    assert "chmod 0777" not in workspace["run"]
     assert "is_relative_to(source)" in prepare_command[1]
     assert 'python -m pip install' in prepare_command[1]
 
