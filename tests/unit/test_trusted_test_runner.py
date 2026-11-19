@@ -139,6 +139,9 @@ def test_target_pytest_uses_validated_prepared_distribution_version(
 
     assert target_pytest.__version__ == "9.0.0"
     assert target_pytest.version_tuple == (9, 0, 0)
+    assert sys.modules["_pytest._version"].version == "9.0.0"
+    assert sys.modules["_pytest._version"].version_tuple == (9, 0, 0)
+    assert target_pytest._version is sys.modules["_pytest._version"]
 
 
 def test_target_pytest_rejects_missing_or_invalid_distribution_version(
