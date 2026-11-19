@@ -225,6 +225,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--entrypoint"] == ["/sandbox/venv/bin/python"]
     assert test_command[:4] == ["-I", "-B", "-m", "pytest"]
     assert test_command[-1] == "/sandbox/source"
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
     assert "docker.sock" not in test["run"]
