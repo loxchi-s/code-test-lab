@@ -24,7 +24,12 @@ def _write_project(
     tool_config: str = '[tool.setuptools_scm]\nversion_file = "src/_version.py"\n',
 ) -> None:
     version_config = 'dynamic = ["version"]' if dynamic else 'version = "8.0.0"'
-    build_requirements = f'"setuptools>=77", "{requirement}"'
+    build_requirement = (
+        f'"hatchling>=1.25", "{requirement}"'
+        if build_backend == "hatchling.build"
+        else f'"setuptools>=77", "{requirement}"'
+    )
+    build_requirements = build_requirement
     dependency_lines = ", ".join(f'"{item}"' for item in dependencies)
     dev_lines = ", ".join(f'"{item}"' for item in dev_requirements)
     path.mkdir(parents=True)
