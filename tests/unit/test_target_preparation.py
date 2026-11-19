@@ -186,7 +186,6 @@ def test_prepare_cli_writes_requirements_and_distribution_metadata(
     _write_project(source)
     requirements_file = tmp_path / "requirements.txt"
     distribution_file = tmp_path / "distribution-name"
-    env_file = tmp_path / "scm-overrides"
     monkeypatch.setattr(
         sys,
         "argv",
@@ -202,10 +201,6 @@ def test_prepare_cli_writes_requirements_and_distribution_metadata(
             str(requirements_file),
             "--distribution-file",
             str(distribution_file),
-            "--seed-version",
-            "9.1.0",
-            "--env-file",
-            str(env_file),
         ],
     )
 
@@ -214,36 +209,6 @@ def test_prepare_cli_writes_requirements_and_distribution_metadata(
         "iniconfig>=2\npytest-xdist>=3.5\n"
     )
     assert distribution_file.read_text(encoding="utf-8") == "pytest\n"
-    assert env_file.read_text(encoding="utf-8") == (
-        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\n"
-        "VCS_VERSIONING_PRETEND_VERSION_FOR_PYTEST=9.1.0+sandbox.g0123456789ab\n"
-    )
-
-
-def test_prepare_cli_rejects_invalid_seed_version(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    source = tmp_path / "target"
-    _write_project(source)
-    env_file = tmp_path / "scm-overrides"
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "target_preparation",
-            "--source",
-            str(source),
-            "--commit-sha",
-            COMMIT_SHA,
-            "--seed-version",
-            "1.2.3+invalid+suffix",
-            "--env-file",
-            str(env_file),
-        ],
-    )
-
-    assert main() == 2
-    assert not env_file.exists()
 
 
 def test_invalid_target_commit_is_rejected_before_copy(tmp_path: Path) -> None:
