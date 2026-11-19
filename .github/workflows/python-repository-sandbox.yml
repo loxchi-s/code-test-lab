@@ -240,7 +240,10 @@ jobs:
             --user 10001:10001 \
             --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -ec 'exec /sandbox/venv/bin/python -I -B -m pytest -q -p no:cacheprovider /input/target' 2>&1
+            -ec 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then
+              exec /sandbox/venv/bin/python -I -B -m pytest -q -p no:cacheprovider /input/target
+            fi
+            exec /usr/local/bin/python -I -B -c "import sys; from pathlib import Path; import pytest; source = Path('/input/target'); sys.path.extend(str(path) for path in (source / 'src', source) if path.is_dir()); site_packages = sorted(Path('/sandbox/venv/lib').glob('python*/site-packages')); assert len(site_packages) == 1, 'expected exactly one prepared site-packages directory'; sys.path.append(str(site_packages[0])); raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', str(source)]))"' 2>&1
 
       - name: Remove prepared target containers and unmount tmpfs workspace
         if: ${{ always() }}
