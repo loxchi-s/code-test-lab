@@ -301,11 +301,14 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_command[:1] == ["-ec"]
     test_script = test_command[1]
     assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then' in test_script
-    assert "/sandbox/venv/bin/python -I -B -m pytest" in test_script
-    assert "exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner" in test_script
+    assert test_script.count("exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner") == 2
+    assert "--target-pytest" in test_script
+    assert "/sandbox/venv/bin/python" not in test_script
     runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
-    assert runner.index("import pytest") < runner.index("sys.path.extend")
-    assert "sys.path.append(str(site_packages[0]))" in runner
+    assert 'parser.add_argument("--target-pytest", action="store_true")' in runner
+    assert "target_pytest=args.target_pytest" in runner
+    assert "sys.path[trusted_index:trusted_index] = target_paths" in runner
+    assert "sys.path.append(target_paths[-1])" in runner
     assert "site.addsitedir(" not in runner
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
