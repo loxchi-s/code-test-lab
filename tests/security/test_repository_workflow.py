@@ -141,8 +141,8 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
     harness_checkout, target_checkout = checkouts
     assert harness_checkout["with"]["path"] == "sandbox-harness"
     assert harness_checkout["with"]["persist-credentials"] == "false"
-    assert target_checkout["with"]["repository"] == "${{ inputs.repository }}"
-    assert target_checkout["with"]["ref"] == "${{ inputs.ref }}"
+    assert target_checkout["with"]["repository"] == "${{ steps.validate-target.outputs.repository }}"
+    assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
     assert "token" not in target_checkout["with"]
