@@ -306,7 +306,13 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "/sandbox/venv/bin/python" not in test_script
     runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
     assert 'parser.add_argument("--target-pytest", action="store_true")' in runner
-    assert "target_pytest=args.target_pytest" in runner
+    main_body = runner.split("def main", maxsplit=1)[1]
+    target_branch = main_body.split("if args.target_pytest:", maxsplit=1)[1].split(
+        "else:", maxsplit=1
+    )[0]
+    trusted_branch = main_body.split("else:", maxsplit=1)[1]
+    assert target_branch.index("configure_target_import_paths") < target_branch.index("import pytest")
+    assert trusted_branch.index("import pytest") < trusted_branch.index("configure_target_import_paths")
     assert "sys.path[trusted_index:trusted_index] = target_paths" in runner
     assert "sys.path.append(target_paths[-1])" in runner
     assert "site.addsitedir(" not in runner
