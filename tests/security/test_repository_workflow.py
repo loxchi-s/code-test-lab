@@ -193,6 +193,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "cp -a /input/target/. /sandbox/source/" in prepare_command[1]
+    assert "sudo chown" not in prepare["run"]
+    assert "is_relative_to(source)" in prepare_command[1]
     assert 'python -m pip install' in prepare_command[1]
 
     assert test["timeout-minutes"] == "20"
