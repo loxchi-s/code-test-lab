@@ -165,7 +165,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     workflow = _workflow()
     steps = workflow["jobs"]["python-sandbox"]["steps"]
     workspace = next(
-        step for step in steps if step.get("name") == "Create size-bounded target tmpfs volume"
+        step for step in steps if step.get("name") == "Create size-bounded host tmpfs workspace"
     )
     prepare = next(
         step for step in steps
@@ -177,7 +177,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     )
     cleanup = next(
         step for step in steps
-        if step.get("name") == "Remove prepared target containers and tmpfs volume"
+        if step.get("name") == "Remove prepared target containers and unmount tmpfs workspace"
     )
 
     assert prepare["timeout-minutes"] == "15"
@@ -196,7 +196,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--read-only"] == ["true"]
     assert prepare_options["--mount"] == [
         "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly",
-        "type=volume,src=${TARGET_VOLUME},dst=/sandbox",
+        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox",
     ]
     assert prepare_options["--workdir"] == ["/sandbox"]
     assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]
@@ -210,24 +210,24 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "cp -R /input/target/. /sandbox/source/" in prepare_command[1]
-    assert workspace["env"]["TARGET_VOLUME"] == "code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}"
-    assert "docker volume create --driver local" in workspace["run"]
-    assert "--opt type=tmpfs --opt device=tmpfs" in workspace["run"]
-    assert "--opt o=size=2g,uid=10001,gid=10001" in workspace["run"]
+    assert "mktemp -d" in workspace["run"]
+    assert "GITHUB_OUTPUT" in workspace["run"]
+    assert "sudo mount -t tmpfs" in workspace["run"]
+    assert "size=2g,uid=10001,gid=10001,mode=0755" in workspace["run"]
     assert "is_relative_to(source)" in prepare_command[1]
     assert 'python -m pip install' in prepare_command[1]
 
     assert test["timeout-minutes"] == "20"
     assert "trap restore_workflow_commands EXIT" in test["run"]
     assert "stop-commands" in test["run"]
-    assert "TARGET_VOLUME" in test["env"]
+    assert "TARGET_WORKSPACE" in test["env"]
     test_tokens = _docker_run_tokens(test["run"])
     test_options, test_image, test_command = _docker_options(test_tokens)
     assert test_image == "code-test-lab-python:${GITHUB_SHA}"
     assert test_options["--network"] == ["none"]
     assert test_options["--read-only"] == ["true"]
     assert test_options["--mount"] == [
-        "type=volume,src=${TARGET_VOLUME},dst=/sandbox,readonly"
+        "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly"
     ]
     assert test_options["--workdir"] == ["/sandbox/source"]
     assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
@@ -248,7 +248,9 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
 
     assert cleanup["if"] == "${{ always() }}"
     assert 'docker rm -f "$PREP_CONTAINER" "$TEST_CONTAINER"' in cleanup["run"]
-    assert 'docker volume rm "$TARGET_VOLUME"' in cleanup["run"]
+    assert 'sudo umount "$TARGET_WORKSPACE"' in cleanup["run"]
+    assert 'mountpoint -q "$TARGET_WORKSPACE"' in cleanup["run"]
+    assert 'rmdir "$TARGET_WORKSPACE"' in cleanup["run"]
 
 
 def test_target_code_is_never_run_on_host_and_cleanup_is_bounded() -> None:
@@ -297,4 +299,6 @@ def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
     assert 'type=bind,src=$workspace,dst=/workspace,readonly"' in smoke["run"]
     assert 'probe.write_text("blocked")' in smoke["run"]
     assert cleanup["if"] == "${{ always() }}"
+    assert "WORKSPACE" in cleanup["env"]
     assert 'sudo umount "$WORKSPACE"' in cleanup["run"]
+    assert 'mountpoint -q "$WORKSPACE"' in cleanup["run"]
