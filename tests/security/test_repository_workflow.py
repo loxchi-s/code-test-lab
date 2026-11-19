@@ -317,10 +317,14 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
         "else:", maxsplit=1
     )[0]
     trusted_branch = main_body.split("else:", maxsplit=1)[1]
-    assert target_branch.index("configure_target_import_paths") < target_branch.index("import pytest")
+    assert target_branch.index("configure_target_import_paths") < target_branch.index(
+        "configure_target_pytest_version"
+    ) < target_branch.index("import pytest")
     assert trusted_branch.index("import pytest") < trusted_branch.index("configure_target_import_paths")
     assert "sys.path[trusted_index:trusted_index] = target_paths" in runner
     assert "sys.path.append(target_paths[-1])" in runner
+    assert 'os.environ["PYTHONPATH"] = os.pathsep.join(target_paths)' in runner
+    assert "metadata.distributions(path=[str(site_packages)])" in runner
     runner_tree = ast.parse(runner)
     assert not any(
         isinstance(node, ast.Call)
@@ -389,6 +393,9 @@ def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
     assert smoke["timeout-minutes"] == "3"
     assert "untrusted pytest imported" in smoke["run"]
     assert "exit 97" in smoke["run"]
+    assert "return 97" in smoke["run"]
+    assert 'target_status" -ne 97' in smoke["run"]
+    assert '_pytest.__version__ == "9.0.0"' in smoke["run"]
     assert "/opt/trusted-runner/trusted_test_runner.py" in smoke["run"]
     assert "/opt/trusted-runner/bin/python" in smoke["run"]
     assert "--network none --read-only" in smoke["run"]
