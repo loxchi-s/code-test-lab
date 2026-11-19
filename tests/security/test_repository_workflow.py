@@ -242,7 +242,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "TARGET_COMMIT" in metadata["env"]
     assert "GITHUB_OUTPUT" in metadata["run"]
     assert "distribution=\"$(cat \"$metadata_file\")\"" in metadata["run"]
-    assert "distribution=${distribution,,}" in metadata["run"]
+    assert 'distribution="${distribution,,}"' in metadata["run"]
     assert "pip install" not in metadata["run"]
     metadata_tokens = _docker_run_tokens(metadata["run"])
     metadata_options, metadata_image, metadata_command = _docker_options(metadata_tokens)
