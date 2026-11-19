@@ -70,7 +70,7 @@ def _validate_setuptools_package_dir(tool: dict[str, Any]) -> None:
 
     for package, directory in package_dir.items():
         if not isinstance(package, str) or not isinstance(directory, str):
-            raise ValueError("target package-dir mappings must contain string keys and paths")
+            raise TypeError("target package-dir mappings must contain string keys and paths")
         if "\\" in directory or ":" in directory:
             raise ValueError("target package-dir paths must use relative POSIX paths")
 
