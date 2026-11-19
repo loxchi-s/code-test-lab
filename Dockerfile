@@ -13,7 +13,7 @@ COPY .github/workflows/python-repository-sandbox.yml ./.github/workflows/python-
 
 RUN apk update \
     && apk upgrade --no-cache \
-    && apk add --no-cache python-3.12 py3.12-pip ca-certificates-bundle \
+    && apk add --no-cache python-3.12 py3.12-pip ca-certificates-bundle bash \
     && python -m pip install --no-cache-dir --upgrade 'pip==26.3' \
     && python -m pip install --no-cache-dir '.[dev]' \
     && pytest_version="$(python -I -c 'import importlib.metadata as metadata; print(metadata.version("pytest"))')" \
