@@ -49,8 +49,7 @@ def _validated_requirements(value: Any, field: str) -> tuple[str, ...]:
         requirement = raw_requirement.strip()
         if (
             not requirement
-            or "\n" in requirement
-            or "\r" in requirement
+            or len(requirement.splitlines()) != 1
             or requirement.startswith(("-", "#"))
         ):
             raise ValueError(f"target project.{field} contains an unsafe requirement line")
