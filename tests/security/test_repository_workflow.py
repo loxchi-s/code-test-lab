@@ -416,6 +416,7 @@ def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
     assert 'sudo umount "$WORKSPACE"' in cleanup["run"]
     assert 'mountpoint -q "$WORKSPACE"' in cleanup["run"]
 
+
 def test_ci_scans_full_image_sbom_and_pypi_inventory() -> None:
     ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     steps = ci_workflow["jobs"]["quality"]["steps"]
