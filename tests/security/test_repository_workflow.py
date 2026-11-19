@@ -415,3 +415,28 @@ def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
     assert "WORKSPACE" in cleanup["env"]
     assert 'sudo umount "$WORKSPACE"' in cleanup["run"]
     assert 'mountpoint -q "$WORKSPACE"' in cleanup["run"]
+
+def test_ci_scans_full_image_sbom_and_pypi_inventory() -> None:
+    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    steps = ci_workflow["jobs"]["quality"]["steps"]
+    install = next(
+        step for step in steps
+        if step.get("name") == "Install trusted Grype vulnerability scanner"
+    )
+    python_scan = next(
+        step for step in steps
+        if step.get("name") == "Scan image SBOM with trusted Grype"
+    )
+    full_scan = next(
+        step for step in steps
+        if step.get("name") == "Scan full image SBOM with trusted Grype"
+    )
+
+    assert install["id"] == "install-grype"
+    assert "sbom:$RUNNER_TEMP/python-sbom.json" in python_scan["run"]
+    assert "sbom:$RUNNER_TEMP/image-sbom.json" in full_scan["run"]
+    assert "--fail-on low" in python_scan["run"]
+    assert "--fail-on low" in full_scan["run"]
+    assert "steps.image-sbom.outcome == 'success'" in full_scan["if"]
+    assert "steps.install-grype.outcome == 'success'" in full_scan["if"]
+
