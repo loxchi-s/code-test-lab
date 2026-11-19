@@ -1,6 +1,6 @@
+import sys
 from collections.abc import Callable
 from pathlib import Path
-import sys
 
 from code_test_lab.target_preparation import (
     main,
@@ -205,7 +205,7 @@ def test_prepare_cli_writes_requirements_and_distribution_metadata(
     assert requirements_file.read_text(encoding="utf-8") == (
         "iniconfig>=2\npytest-xdist>=3.5\n"
     )
-    assert distribution_file.read_text(encoding="utf-8") == "pytest"
+    assert distribution_file.read_text(encoding="utf-8") == "pytest\n"
 
 
 def test_invalid_target_commit_is_rejected_before_copy(tmp_path: Path) -> None:
