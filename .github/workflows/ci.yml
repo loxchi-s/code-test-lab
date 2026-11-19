@@ -120,8 +120,9 @@ jobs:
           workspace="$(mktemp -d "$RUNNER_TEMP/trusted-runner.XXXXXX")"
           source="$workspace/source"
           container="sandbox-trusted-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+          target_container="${container}-target-pytest"
           cleanup() {
-            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker rm -f "$container" "$target_container" >/dev/null 2>&1 || true
             rm -rf "$workspace"
           }
           trap cleanup EXIT
@@ -148,7 +149,7 @@ jobs:
 
 
           def test_harness_runner_and_pytest_are_trusted() -> None:
-              assert sys.executable == "/usr/local/bin/python"
+              assert sys.executable == "/opt/trusted-runner/bin/python"
               assert not Path(pytest.__file__).resolve().is_relative_to(Path("/sandbox/venv"))
           PY
           docker run --rm --name "$container" \
@@ -162,7 +163,7 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
             --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
             -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv'
-          docker run --rm --name "$container-target-pytest" \
+          docker run --rm --name "$target_container" \
             --network none --read-only \
             --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
             --mount "type=bind,src=$source,dst=/input/target,readonly" \
