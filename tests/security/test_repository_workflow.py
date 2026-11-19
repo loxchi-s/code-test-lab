@@ -302,11 +302,11 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     test_script = test_command[1]
     assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then' in test_script
     assert "/sandbox/venv/bin/python -I -B -m pytest" in test_script
-    assert "exec /usr/local/bin/python -I -B -c" in test_script
-    assert "import pytest" in test_script
-    assert "sys.path.extend" in test_script
-    assert "sys.path.append(str(site_packages[0]))" in test_script
-    assert "site.addsitedir" not in test_script
+    assert "exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner" in test_script
+    runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
+    assert runner.index("import pytest") < runner.index("sys.path.extend")
+    assert "sys.path.append(str(site_packages[0]))" in runner
+    assert "site.addsitedir" not in runner
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
