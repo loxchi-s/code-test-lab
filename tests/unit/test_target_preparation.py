@@ -375,3 +375,52 @@ def test_dependency_requirements_reject_unicode_line_separators(tmp_path: Path) 
                 path, tmp_path / f"prepared-{path.name}", COMMIT_SHA
             ),
         )
+
+
+
+def test_setuptools_package_dir_rejects_import_roots_outside_root_and_src(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "target"
+    _write_project(
+        source,
+        tool_config='[tool.setuptools]\npackage-dir = {"" = "lib"}\n',
+    )
+
+    _assert_raises(
+        ValueError,
+        "must resolve under the project root or src import roots",
+        lambda: prepare_target_source(source, tmp_path / "prepared", COMMIT_SHA),
+    )
+
+
+def test_setuptools_package_dir_accepts_supported_root_and_src_mappings(
+    tmp_path: Path,
+) -> None:
+    configurations = (
+        '[tool.setuptools]\npackage-dir = {"" = "."}\n',
+        '[tool.setuptools]\npackage-dir = {"" = "src"}\n',
+        '[tool.setuptools]\npackage-dir = {"sample" = "src/sample"}\n',
+        '[tool.setuptools]\npackage-dir = {"sample" = "sample"}\n',
+    )
+    for index, configuration in enumerate(configurations):
+        source = tmp_path / f"target-{index}"
+        _write_project(source, name="sample", tool_config=configuration)
+        (source / "src").mkdir()
+        prepare_target_source(source, tmp_path / f"prepared-{index}", COMMIT_SHA)
+
+
+def test_setuptools_package_dir_rejects_parent_traversal(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "target"
+    _write_project(
+        source,
+        tool_config='[tool.setuptools]\npackage-dir = {"" = "../outside"}\n',
+    )
+
+    _assert_raises(
+        ValueError,
+        "must not be absolute or traverse parent directories",
+        lambda: prepare_target_source(source, tmp_path / "prepared", COMMIT_SHA),
+    )
