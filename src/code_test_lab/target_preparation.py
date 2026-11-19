@@ -29,7 +29,7 @@ def _read_project_metadata(source: Path) -> dict[str, Any]:
         raise ValueError("target pyproject.toml exceeds the 1 MiB metadata limit")
     document = tomllib.loads(contents.decode("utf-8"))
     if not isinstance(document, dict):
-        raise ValueError("target pyproject.toml must contain a TOML document")
+        raise TypeError("target pyproject.toml must contain a TOML document")
     return document
 
 
