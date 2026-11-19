@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata as metadata
+import os
 import sys
 import sysconfig
 from pathlib import Path
+
+from packaging.version import InvalidVersion, Version
 
 
 def configure_target_import_paths(
@@ -25,6 +29,10 @@ def configure_target_import_paths(
         str(path) for path in (source / "src", source) if path.is_dir()
     ]
     target_paths.append(str(site_packages[0]))
+
+    # PYTHONPATH is inherited by ordinary Python child processes. Python does not
+    # process .pth files from PYTHONPATH entries, unlike site.addsitedir().
+    os.environ["PYTHONPATH"] = os.pathsep.join(target_paths)
 
     if target_pytest:
         trusted_site = Path(sysconfig.get_paths()["purelib"]).resolve()
@@ -47,6 +55,33 @@ def configure_target_import_paths(
     return site_packages[0]
 
 
+def configure_target_pytest_version(site_packages: Path) -> None:
+    """Apply the prepared distribution version when pytest's generated file is absent."""
+    matches = [
+        distribution
+        for distribution in metadata.distributions(path=[str(site_packages)])
+        if (distribution.metadata.get("Name") or "").lower() == "pytest"
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            "prepared pytest environment must contain exactly one pytest distribution metadata record"
+        )
+
+    try:
+        version = Version(matches[0].version)
+    except InvalidVersion as exc:
+        raise ValueError("prepared pytest distribution has invalid version metadata") from exc
+
+    # pytest's source package falls back to "unknown" when setuptools-scm's
+    # generated _pytest/_version.py is absent. Restore only the validated
+    # distribution metadata; do not execute the target build backend or write
+    # into the read-only target checkout.
+    import _pytest
+
+    _pytest.__version__ = str(version)
+    _pytest.version_tuple = tuple(version.release)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run target tests with the immutable harness interpreter."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -57,14 +92,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.target_pytest:
-            configure_target_import_paths(args.source, args.venv, target_pytest=True)
+            site_packages = configure_target_import_paths(
+                args.source, args.venv, target_pytest=True
+            )
+            configure_target_pytest_version(site_packages)
             import pytest
         else:
             # Load the trusted pytest before exposing any target-controlled paths.
             import pytest
 
             configure_target_import_paths(args.source, args.venv)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, metadata.PackageNotFoundError) as exc:
         print(f"Trusted test runner configuration error: {exc}", file=sys.stderr)
         return 2
 
