@@ -36,9 +36,33 @@ def test_target_paths_are_added_without_executing_untrusted_pth_files(
     assert not marker.exists()
 
 
-def test_target_paths_reject_ambiguous_virtualenv_site_packages(tmp_path: Path) -> None:
-    from code_test_lab.trusted_test_runner import configure_target_import_paths
+def test_target_pytest_paths_precede_harness_site_packages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sysconfig
 
+    source = tmp_path / "target"
+    (source / "src").mkdir(parents=True)
+    venv = tmp_path / "venv"
+    site_packages = venv / "lib" / "python3.12" / "site-packages"
+    site_packages.mkdir(parents=True)
+    original_path = list(sys.path)
+    monkeypatch.setattr(sys, "path", original_path.copy())
+    trusted_site = Path(sysconfig.get_paths()["purelib"]).resolve()
+    trusted_index = next(
+        index for index, entry in enumerate(original_path)
+        if Path(entry).resolve() == trusted_site
+    )
+
+    configure_target_import_paths(source, venv, target_pytest=True)
+
+    assert sys.path[trusted_index:trusted_index + 3] == [
+        str(source / "src"), str(source), str(site_packages)
+    ]
+    assert sys.path.index(str(site_packages)) < sys.path.index(str(trusted_site))
+
+
+def test_target_paths_reject_ambiguous_virtualenv_site_packages(tmp_path: Path) -> None:
     source = tmp_path / "target"
     source.mkdir()
     venv = tmp_path / "venv"
