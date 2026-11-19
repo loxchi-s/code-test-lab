@@ -196,6 +196,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert prepare_options["--entrypoint"] == ["/bin/sh"]
     assert prepare_command[:1] == ["-ec"]
     assert "cp -R /input/target/. /sandbox/source/" in prepare_command[1]
+    assert workspace["env"]["TARGET_VOLUME"] == "code-test-lab-target-${{ github.run_id }}-${{ github.run_attempt }}"
     assert "docker volume create --driver local" in workspace["run"]
     assert "--opt type=tmpfs --opt device=tmpfs" in workspace["run"]
     assert "--opt o=size=2g,uid=10001,gid=10001" in workspace["run"]
