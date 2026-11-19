@@ -370,7 +370,7 @@ def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
     assert smoke["timeout-minutes"] == "3"
     assert "untrusted pytest imported" in smoke["run"]
     assert "exit 97" in smoke["run"]
-    assert "code_test_lab.trusted_test_runner" in smoke["run"]
+    assert "/opt/trusted-runner/trusted_test_runner.py" in smoke["run"]
     assert "/opt/trusted-runner/bin/python" in smoke["run"]
     assert "--network none --read-only" in smoke["run"]
     assert "dst=/sandbox,readonly" in smoke["run"]
