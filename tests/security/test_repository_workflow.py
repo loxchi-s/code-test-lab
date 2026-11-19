@@ -26,7 +26,10 @@ def _docker_run_tokens(script: str) -> list[str]:
     while command_lines[-1].rstrip().endswith(chr(92)):
         command_lines.append(lines[start + len(command_lines)])
     command = " ".join(line.rstrip().removesuffix(chr(92)) for line in command_lines)
-    return shlex.split(command)
+    tokens = shlex.split(command)
+    if tokens[-1:] == ["2>&1"]:
+        tokens.pop()
+    return tokens
 
 
 def _docker_options(tokens: list[str]) -> tuple[dict[str, list[str]], str, list[str]]:
