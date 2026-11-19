@@ -113,6 +113,31 @@ jobs:
           SANDBOX_CONTAINER: sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker rm -f "$SANDBOX_CONTAINER" || true
 
+      - name: Smoke test trusted runner against poisoned prepared environment
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
+        timeout-minutes: 3
+        run: |
+          workspace="$(mktemp -d "$RUNNER_TEMP/trusted-runner.XXXXXX")"
+          container="sandbox-trusted-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            rm -rf "$workspace"
+          }
+          trap cleanup EXIT
+          mkdir -p "$workspace/venv/bin" "$workspace/venv/lib/python3.12/site-packages"
+          printf '#!/bin/sh\nexit 97\n' > "$workspace/venv/bin/python"
+          chmod 0755 "$workspace/venv/bin/python"
+          printf 'raise RuntimeError("untrusted pytest imported")\n' \
+            > "$workspace/venv/lib/python3.12/site-packages/pytest.py"
+          docker run --rm --name "$container" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
+            -ec 'exec /usr/local/bin/python -I -B -c "import sys; import pytest; from pathlib import Path; site = Path(\"/sandbox/venv/lib/python3.12/site-packages\"); sys.path.append(str(site)); assert not Path(pytest.__file__).resolve().is_relative_to(site.resolve()); assert sys.executable == \"/usr/local/bin/python\""'
+
       - name: Smoke test bounded host tmpfs workspace lifecycle
         id: tmpfs-smoke
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
