@@ -1,6 +1,6 @@
-import sys
 from collections.abc import Callable
 from pathlib import Path
+import sys
 
 from code_test_lab.target_preparation import (
     main,

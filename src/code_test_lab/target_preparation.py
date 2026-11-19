@@ -85,7 +85,7 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     document = _read_project_metadata(source)
     project = document.get("project")
     if not isinstance(project, dict):
-        raise ValueError("target pyproject.toml must declare a [project] table")
+        raise TypeError("target pyproject.toml must declare a [project] table")
 
     name = project.get("name")
     if not isinstance(name, str) or not _DISTRIBUTION_NAME_PATTERN.fullmatch(name):
@@ -102,7 +102,7 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     dependencies = _validated_requirements(project.get("dependencies", []), "dependencies")
     optional = project.get("optional-dependencies", {})
     if not isinstance(optional, dict):
-        raise ValueError("target project.optional-dependencies must be a table")
+        raise TypeError("target project.optional-dependencies must be a table")
     dev_dependencies = _validated_requirements(optional.get("dev"), "optional-dependencies.dev")
     if _canonicalize_distribution_name(name) != "pytest" and not any(
         _requirement_name(item) == "pytest" for item in dev_dependencies
@@ -111,7 +111,7 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
 
     build_system = document.get("build-system", {})
     if not isinstance(build_system, dict):
-        raise ValueError("target build-system must be a table")
+        raise TypeError("target build-system must be a table")
     build_requirements = _validated_requirements(
         build_system.get("requires", []), "build-system.requires"
     )
@@ -119,7 +119,7 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
 
     tool = document.get("tool", {})
     if not isinstance(tool, dict):
-        raise ValueError("target tool configuration must be a table")
+        raise TypeError("target tool configuration must be a table")
     hatch = tool.get("hatch", {})
     hatch_version = hatch.get("version", {}) if isinstance(hatch, dict) else {}
     if (
