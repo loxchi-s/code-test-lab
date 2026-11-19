@@ -131,6 +131,15 @@ jobs:
           chmod 0755 "$workspace/venv/bin/python"
           printf 'raise RuntimeError("untrusted pytest imported")\n' \
             > "$workspace/venv/lib/python3.12/site-packages/pytest.py"
+          mkdir -p "$source/src/pytest"
+          cat > "$source/src/pytest/__init__.py" <<'PY'
+          from pathlib import Path
+
+
+          def main(args: list[str]) -> int:
+              assert Path(__file__).resolve().is_relative_to(Path("/input/target"))
+              return 0
+          PY
           cat > "$source/test_runner_boundary.py" <<'PY'
           import sys
           from pathlib import Path
