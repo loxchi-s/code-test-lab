@@ -294,14 +294,20 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--security-opt"] == ["no-new-privileges"]
     assert test_options["--user"] == ["10001:10001"]
     assert "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" in test_options["--env"]
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1" in test_options["--env"]
     assert test_options["--entrypoint"] == ["/bin/sh"]
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
-    assert test_command == [
-        "-ec",
-        "exec /sandbox/venv/bin/python -I -B -m pytest -q -p no:cacheprovider /input/target",
-    ]
-    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
+    assert "/sandbox/venv/bin" not in dockerfile
+    assert test_command[:1] == ["-ec"]
+    test_script = test_command[1]
+    assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then' in test_script
+    assert "/sandbox/venv/bin/python -I -B -m pytest" in test_script
+    assert "exec /usr/local/bin/python -I -B -c" in test_script
+    assert "import pytest" in test_script
+    assert "sys.path.extend" in test_script
+    assert "sys.path.append(str(site_packages[0]))" in test_script
+    assert "site.addsitedir" not in test_script
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
     assert "docker.sock" not in test["run"]
