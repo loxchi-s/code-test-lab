@@ -9,6 +9,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = ROOT / ".github/workflows/python-repository-sandbox.yml"
+CI_WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 
 
 def _workflow() -> dict:
@@ -275,3 +276,25 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
     assert "network-enabled preparation container" in readme
     assert 'pip install -e ".[dev]"' in readme
     assert "--network none" in readme
+
+
+def test_ci_smokes_bounded_tmpfs_volume_persistence_and_readonly_mount() -> None:
+    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    steps = ci_workflow["jobs"]["build-and-validate"]["steps"]
+    smoke = next(
+        step for step in steps
+        if step.get("name") == "Smoke test bounded tmpfs volume lifecycle"
+    )
+    cleanup = next(
+        step for step in steps
+        if step.get("name") == "Remove tmpfs volume smoke containers"
+    )
+
+    assert smoke["timeout-minutes"] == "3"
+    assert "--opt type=tmpfs --opt device=tmpfs" in smoke["run"]
+    assert "--opt o=size=64m,uid=10001,gid=10001" in smoke["run"]
+    assert 'dst=/workspace")' in smoke["run"]
+    assert 'dst=/workspace,readonly")' in smoke["run"]
+    assert 'probe.write_text("blocked")' in smoke["run"]
+    assert cleanup["if"] == "${{ always() }}"
+    assert 'docker volume rm "$VOLUME_NAME"' in cleanup["run"]
