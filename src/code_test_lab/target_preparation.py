@@ -214,7 +214,7 @@ def main() -> int:
                 encoding="utf-8",
             )
         if args.distribution_file is not None:
-            args.distribution_file.write_text(metadata.distribution_name, encoding="utf-8")
+            args.distribution_file.write_text(f"{metadata.distribution_name}\n", encoding="utf-8")
         if args.env_file is not None:
             overrides = scm_version_overrides(metadata, args.commit_sha, args.seed_version)
             args.env_file.write_text(
