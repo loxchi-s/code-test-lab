@@ -162,6 +162,16 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
             --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
             -ec 'exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner --source /input/target --venv /sandbox/venv'
+          docker run --rm --name "$container-target-pytest" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
+            --mount "type=bind,src=$source,dst=/input/target,readonly" \
+            --workdir /input/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
+            -ec 'exec /usr/local/bin/python -I -B -m code_test_lab.trusted_test_runner --source /input/target --venv /sandbox/venv --target-pytest'
 
       - name: Smoke test bounded host tmpfs workspace lifecycle
         id: tmpfs-smoke
