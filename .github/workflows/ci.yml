@@ -282,6 +282,7 @@ jobs:
           PY
 
       - name: Install trusted Grype vulnerability scanner
+        id: install-grype
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
           scanner_dir="$(mktemp -d "$RUNNER_TEMP/grype.XXXXXX")"
@@ -300,3 +301,11 @@ jobs:
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-empty.yaml" \
             "sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low
+
+      - name: Scan full image SBOM with trusted Grype
+        if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' && steps.install-grype.outcome == 'success' }}
+        run: |
+          printf '{}' > "$RUNNER_TEMP/grype-full-empty.yaml"
+          cd "$RUNNER_TEMP"
+          grype --config "$RUNNER_TEMP/grype-full-empty.yaml" \
+            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
