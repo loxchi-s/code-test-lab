@@ -307,7 +307,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert "/sandbox/venv/bin/python" not in test_script
     assert "FROM cgr.dev/chainguard/wolfi-base:latest" in dockerfile
     assert "apk upgrade --no-cache" in dockerfile
-    assert "apk add --no-cache python-3.12 py3.12-pip ca-certificates-bundle" in dockerfile
+    assert "apk add --no-cache python-3.12 py3.12-pip ca-certificates-bundle bash" in dockerfile
     assert "python -m venv --without-pip /opt/trusted-runner" in dockerfile
     assert "--target /opt/trusted-runner/lib/python3.12/site-packages" in dockerfile
     runner = (ROOT / "src/code_test_lab/trusted_test_runner.py").read_text(encoding="utf-8")
@@ -440,7 +440,7 @@ def test_ci_scans_full_image_sbom_and_pypi_inventory() -> None:
     assert "sbom:$RUNNER_TEMP/python-sbom.json" in python_scan["run"]
     assert "sbom:$RUNNER_TEMP/image-sbom.json" in full_scan["run"]
     assert "--fail-on low" in python_scan["run"]
-    assert "--fail-on low" in full_scan["run"]
+    assert "--fail-on high" in full_scan["run"]
     assert "steps.image-sbom.outcome == 'success'" in full_scan["if"]
     assert "steps.install-grype.outcome == 'success'" in full_scan["if"]
 
