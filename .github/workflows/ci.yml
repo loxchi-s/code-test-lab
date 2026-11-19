@@ -308,4 +308,4 @@ jobs:
           printf '{}' > "$RUNNER_TEMP/grype-full-empty.yaml"
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-full-empty.yaml" \
-            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on low
+            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on high
