@@ -81,8 +81,8 @@ def configure_target_pytest_version(site_packages: Path) -> None:
 
     version_tuple = tuple(version.release)
     version_module = types.ModuleType("_pytest._version")
-    version_module.version = str(version)
-    version_module.version_tuple = version_tuple
+    setattr(version_module, "version", str(version))
+    setattr(version_module, "version_tuple", version_tuple)
     # Some pytest modules import the generated module directly, not only the
     # attributes re-exported by _pytest. Recreate that trusted metadata module
     # in memory so the read-only target checkout remains untouched.
