@@ -126,6 +126,7 @@ jobs:
           }
           trap cleanup EXIT
           mkdir -p "$source" "$workspace/venv/bin" "$workspace/venv/lib/python3.12/site-packages"
+          chmod 0755 "$workspace"
           printf '#!/bin/sh\nexit 97\n' > "$workspace/venv/bin/python"
           chmod 0755 "$workspace/venv/bin/python"
           printf 'raise RuntimeError("untrusted pytest imported")\n' \
