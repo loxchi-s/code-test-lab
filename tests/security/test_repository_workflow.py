@@ -297,13 +297,10 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--entrypoint"] == ["/bin/sh"]
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert 'PATH="/sandbox/venv/bin:${PATH}"' in dockerfile
-    assert test_command[:1] == ["-ec"]
-    runner_script = test_command[1]
-    assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]' in runner_script
-    assert "exec /sandbox/venv/bin/python -I -B -m pytest" in runner_script
-    assert "exec /usr/local/bin/python -I -B -c" in runner_script
-    assert runner_script.index("import pytest") < runner_script.index("sys.path.append")
-    assert "/input/target" in runner_script
+    assert test_command == [
+        "-ec",
+        "exec /sandbox/venv/bin/python -I -B -m pytest -q -p no:cacheprovider /input/target",
+    ]
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
