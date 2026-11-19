@@ -132,14 +132,30 @@ jobs:
           chmod 0755 "$workspace/venv/bin/python"
           printf 'raise RuntimeError("untrusted pytest imported")\n' \
             > "$workspace/venv/lib/python3.12/site-packages/pytest.py"
-          mkdir -p "$source/src/pytest"
+          mkdir -p "$source/src/pytest" "$source/src/_pytest"
+          mkdir -p "$workspace/venv/lib/python3.12/site-packages/pytest-9.0.0.dist-info"
+          printf 'Metadata-Version: 2.1\nName: pytest\nVersion: 9.0.0\n' \
+            > "$workspace/venv/lib/python3.12/site-packages/pytest-9.0.0.dist-info/METADATA"
+          cat > "$source/src/_pytest/__init__.py" <<'PY'
+          try:
+              from ._version import version as __version__
+              from ._version import version_tuple
+          except ImportError:
+              __version__ = "unknown"
+              version_tuple = (0, 0, "unknown")
+          PY
           cat > "$source/src/pytest/__init__.py" <<'PY'
           from pathlib import Path
+
+          import _pytest
+          from packaging.version import Version
 
 
           def main(args: list[str]) -> int:
               assert Path(__file__).resolve().is_relative_to(Path("/input/target"))
-              return 0
+              assert _pytest.__version__ == "9.0.0"
+              assert Version(_pytest.__version__) >= Version("8.0")
+              return 97
           PY
           cat > "$source/test_runner_boundary.py" <<'PY'
           import sys
@@ -163,6 +179,7 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
             --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
             -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv'
+          set +e
           docker run --rm --name "$target_container" \
             --network none --read-only \
             --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
@@ -173,6 +190,12 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
             --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
             -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv --target-pytest'
+          target_status=$?
+          set -e
+          if [[ "$target_status" -ne 97 ]]; then
+            echo "::error::target pytest smoke returned $target_status; expected sentinel 97"
+            exit 1
+          fi
 
       - name: Smoke test bounded host tmpfs workspace lifecycle
         id: tmpfs-smoke
