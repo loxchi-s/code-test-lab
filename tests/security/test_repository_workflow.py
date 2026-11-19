@@ -280,7 +280,7 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
 
 def test_ci_smokes_bounded_tmpfs_volume_persistence_and_readonly_mount() -> None:
     ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-    steps = ci_workflow["jobs"]["build-and-validate"]["steps"]
+    steps = ci_workflow["jobs"]["quality"]["steps"]
     smoke = next(
         step for step in steps
         if step.get("name") == "Smoke test bounded tmpfs volume lifecycle"
@@ -293,8 +293,8 @@ def test_ci_smokes_bounded_tmpfs_volume_persistence_and_readonly_mount() -> None
     assert smoke["timeout-minutes"] == "3"
     assert "--opt type=tmpfs --opt device=tmpfs" in smoke["run"]
     assert "--opt o=size=64m,uid=10001,gid=10001" in smoke["run"]
-    assert 'dst=/workspace")' in smoke["run"]
-    assert 'dst=/workspace,readonly")' in smoke["run"]
+    assert 'dst=/workspace"' in smoke["run"]
+    assert 'dst=/workspace,readonly"' in smoke["run"]
     assert 'probe.write_text("blocked")' in smoke["run"]
     assert cleanup["if"] == "${{ always() }}"
     assert 'docker volume rm "$VOLUME_NAME"' in cleanup["run"]
