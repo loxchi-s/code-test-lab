@@ -14,7 +14,7 @@ CI_WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 
 
 def _workflow() -> dict:
-    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
 
 
 def _docker_run_tokens(script: str) -> list[str]:
@@ -97,7 +97,9 @@ def test_external_python_workflow_is_manual_and_public_only() -> None:
         step for step in job["steps"]
         if step.get("name") == "Checkout target repository into isolated workspace"
     )
-    assert target_checkout["with"]["repository"] == "${{ steps.validate-target.outputs.repository }}"
+    assert target_checkout["with"]["repository"] == (
+        "${{ steps.validate-target.outputs.repository }}"
+    )
     assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
 
 
@@ -210,7 +212,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
         "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox",
     ]
     assert prepare_options["--workdir"] == ["/sandbox"]
-    assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]
+    assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]  # noqa: S108 - bounded host workspace tmpfs.
     assert prepare_options["--memory"] == ["4g"]
     assert prepare_options["--memory-swap"] == ["4g"]
     assert prepare_options["--cpus"] == ["2"]
@@ -253,7 +255,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert metadata_options["--mount"] == [
         "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly"
     ]
-    assert metadata_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=64m"]
+    assert metadata_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=64m"]  # noqa: S108 - bounded metadata tmpfs.
     assert metadata_options["--memory"] == ["512m"]
     assert metadata_options["--memory-swap"] == ["512m"]
     assert metadata_options["--cpus"] == ["1"]
@@ -264,7 +266,10 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert metadata_options["--env"] == ["TARGET_COMMIT=${TARGET_COMMIT}"]
     assert metadata_options["--entrypoint"] == ["/bin/sh"]
     assert metadata_command[:1] == ["-ec"]
-    assert "python -I -m code_test_lab.target_preparation --source /input/target" in metadata_command[1]
+    assert (
+        "python -I -m code_test_lab.target_preparation --source /input/target"
+        in metadata_command[1]
+    )
     assert "--distribution-file /tmp/target-distribution" in metadata_command[1]
     assert "cat /tmp/target-distribution" in metadata_command[1]
 
@@ -286,7 +291,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     ]
     assert test_options["--workdir"] == ["/input/target"]
     assert test_options["--mount"][1].endswith(",readonly")
-    assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
+    assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]  # noqa: S108 - bounded test tmpfs.
     assert test_options["--memory"] == ["4g"]
     assert test_options["--memory-swap"] == ["4g"]
     assert test_options["--cpus"] == ["2"]
@@ -305,7 +310,9 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_command[:1] == ["-ec"]
     test_script = test_command[1]
     assert 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then' in test_script
-    assert test_script.count("exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py") == 2
+    assert test_script.count(
+        "exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py"
+    ) == 2
     assert "--target-pytest" in test_script
     assert "/sandbox/venv/bin/python" not in test_script
     assert "FROM cgr.dev/chainguard/wolfi-base:latest" in dockerfile
@@ -323,7 +330,9 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert target_branch.index("configure_target_import_paths") < target_branch.index(
         "configure_target_pytest_version"
     ) < target_branch.index("import pytest")
-    assert trusted_branch.index("import pytest") < trusted_branch.index("configure_target_import_paths")
+    assert trusted_branch.index("import pytest") < trusted_branch.index(
+        "configure_target_import_paths"
+    )
     assert "sys.path[trusted_index:trusted_index] = target_paths" in runner
     assert "sys.path.append(target_paths[-1])" in runner
     assert 'os.environ["PYTHONPATH"] = os.pathsep.join(target_paths)' in runner
@@ -332,8 +341,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert not any(
         isinstance(node, ast.Call)
         and (
-            isinstance(node.func, ast.Attribute) and node.func.attr == "addsitedir"
-            or isinstance(node.func, ast.Name) and node.func.id == "addsitedir"
+            (isinstance(node.func, ast.Attribute) and node.func.attr == "addsitedir")
+            or (isinstance(node.func, ast.Name) and node.func.id == "addsitedir")
         )
         for node in ast.walk(runner_tree)
     )
@@ -387,7 +396,7 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
 
 
 def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
-    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
     steps = ci_workflow["jobs"]["quality"]["steps"]
     smoke = next(
         step for step in steps
