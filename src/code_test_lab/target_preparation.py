@@ -94,10 +94,8 @@ def _validate_setuptools_package_dir(tool: dict[str, Any]) -> None:
         import_root = PurePosixPath(*root_parts).as_posix() if root_parts else "."
         if import_root not in {".", "src"}:
             raise ValueError(
-                (
-                    "target package-dir mappings must resolve under the project root "
-                    "or src import roots"
-                )
+                "target package-dir mappings must resolve under the project root "
+                "or src import roots"
             )
 
 
