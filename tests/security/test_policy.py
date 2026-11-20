@@ -249,7 +249,10 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     assert argv.count("--network") == 1
     assert "max-size=10m" in argv
     assert "max-file=3" in argv
-    for proxy in ("HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=", "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy="):
+    for proxy in (
+        "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=",
+        "http_proxy=", "https_proxy=", "all_proxy=", "ftp_proxy=", "no_proxy=",
+    ):
         assert proxy in argv
 
 
@@ -331,7 +334,10 @@ def test_resolve_image_id_rejects_daemon_without_pid_limit_support(
     def fake_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
         return CompletedProcess(
             argv, 0,
-            stdout='{"PidsLimit":true,"MemoryLimit":true,"SwapLimit":true,"Warnings":["WARNING: No pids limit support"]}',
+            stdout=(
+                '{"PidsLimit":true,"MemoryLimit":true,"SwapLimit":true,'
+                '"Warnings":["WARNING: No pids limit support"]}'
+            ),
             stderr="",
         )
 
@@ -496,7 +502,10 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert pid_preflight_step["timeout-minutes"] == "2"
     assert pid_preflight_step["id"] == "docker-capabilities"
     assert "docker info --format '{{json .}}'" in pid_preflight_step["run"]
-    assert ".PidsLimit == true and .MemoryLimit == true and .SwapLimit == true" in pid_preflight_step["run"]
+    assert (
+        ".PidsLimit == true and .MemoryLimit == true and .SwapLimit == true"
+        in pid_preflight_step["run"]
+    )
     build_step = next(step for step in job["steps"] if step.get("name") == "Build validation image")
     sbom_step = next(
         step for step in job["steps"]
@@ -523,12 +532,19 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'mktemp -d "$RUNNER_TEMP/syft.' in syft_install_step["run"]
     assert '--output "$scanner_dir/syft.tar.gz"' in syft_install_step["run"]
     assert "sha256sum --check" in syft_install_step["run"]
-    assert not any("syft.tar.gz" in step.get("run", "") and "mktemp -d" not in step.get("run", "") for step in job["steps"])
+    assert not any(
+        "syft.tar.gz" in step.get("run", "")
+        and "mktemp -d" not in step.get("run", "")
+        for step in job["steps"]
+    )
     assert 'syft --config "$RUNNER_TEMP/syft-empty.yaml"' in sbom_step["run"]
     assert 'cd "$RUNNER_TEMP"' in sbom_step["run"]
     assert "cyclonedx-json=" in sbom_step["run"]
     assert 'cd "$RUNNER_TEMP"' in python_sbom_step["run"]
-    assert 'python -I - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json"' in python_sbom_step["run"]
+    assert (
+        'python -I - "$RUNNER_TEMP/image-sbom.json" "$RUNNER_TEMP/python-sbom.json"'
+        in python_sbom_step["run"]
+    )
     assert "pkg:pypi/" in python_sbom_step["run"]
     assert 'sbom["components"] = python_components' in python_sbom_step["run"]
     assert 'sbom.pop("dependencies", None)' in python_sbom_step["run"]
@@ -536,7 +552,11 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert 'mktemp -d "$RUNNER_TEMP/grype.' in grype_install_step["run"]
     assert '--output "$scanner_dir/grype.tar.gz"' in grype_install_step["run"]
     assert "sha256sum --check" in grype_install_step["run"]
-    assert not any("grype.tar.gz" in step.get("run", "") and "mktemp -d" not in step.get("run", "") for step in job["steps"])
+    assert not any(
+        "grype.tar.gz" in step.get("run", "")
+        and "mktemp -d" not in step.get("run", "")
+        for step in job["steps"]
+    )
     assert 'grype --config "$RUNNER_TEMP/grype-empty.yaml"' in grype_scan_step["run"]
     assert 'cd "$RUNNER_TEMP"' in grype_scan_step["run"]
     assert '"sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low' in grype_scan_step["run"]
@@ -547,7 +567,10 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
         if step.get("name") == "Smoke test restricted Python repository sandbox"
     )
     assert smoke_step["timeout-minutes"] == "5"
-    assert '--name "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}"' in smoke_step["run"]
+    assert (
+        '--name "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}"'
+        in smoke_step["run"]
+    )
     cleanup_step = next(
         step for step in job["steps"] if step.get("name") == "Remove smoke container"
     )
@@ -597,7 +620,7 @@ def test_container_timeout_is_derived_from_policy() -> None:
         ("cpus: 2", "cpus: 0.1234567891", "NanoCPUs"),
         ("pids_limit: 256", "pids_limit: 99999", "pids_limit"),
         ("timeout_minutes: 20", "timeout_minutes: 21", "timeout_minutes"),
-        ('user: "10001:10001"', 'user: "١٠٠٠١:10001"', "ASCII"),
+        ('user: "10001:10001"', 'user: "١٠٠٠١:10001"', "ASCII"),  # noqa: RUF001 - intentional non-ASCII test input.
     ],
 )
 def test_policy_rejects_unsafe_execution_limits(
@@ -668,7 +691,10 @@ def test_main_cleans_up_container_after_timeout_and_uses_policy_deadline(
     assert calls[1][0] == ["/usr/bin/docker", "rm", "--force", container_name]
 
 
-def test_main_reports_failed_timeout_cleanup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_reports_failed_timeout_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     def timeout_run(argv: list[str], **kwargs: object) -> CompletedProcess[str]:
         raise TimeoutExpired(argv, timeout=1200)
 
@@ -734,7 +760,10 @@ def test_main_cleans_up_after_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("code_test_lab.cli.resolve_docker_target", lambda: DOCKER_TARGET)
     monkeypatch.setattr("code_test_lab.cli.resolve_image_id", lambda *args: IMAGE_ID)
     monkeypatch.setattr("code_test_lab.cli.subprocess.run", interrupt_run)
-    monkeypatch.setattr("code_test_lab.cli.remove_container", lambda name, target=None: calls.append(name) or True)
+    monkeypatch.setattr(
+        "code_test_lab.cli.remove_container",
+        lambda name, target=None: calls.append(name) or True,
+    )
     assert main() == 130
     assert len(calls) == 1
 
@@ -797,7 +826,10 @@ def test_workflow_security_scans_are_independent_and_cover_merge_history() -> No
     assert "--redact" in command_tokens
     assert "--no-banner" in command_tokens
     assert (
-        '--log-opts=--all --full-history --diff-filter=uxdb --diff-merges=first-parent $trusted_head'
+        (
+            '--log-opts=--all --full-history --diff-filter=uxdb '
+            '--diff-merges=first-parent $trusted_head'
+        )
         in command_tokens
     )
 
@@ -883,8 +915,14 @@ def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -
     assert "--ignore-gitleaks-allow" in scan_step["run"]
     assert "--diff-filter=uxdb" in scan_step["run"]
     actionlint_job = workflow["jobs"]["actionlint"]
-    lint_step = next(step for step in actionlint_job["steps"] if step.get("name", "").startswith("Lint workflows"))
-    assert "actionlint -config-file \"$RUNNER_TEMP/actionlint-empty.yml\" -color" in lint_step["run"]
+    lint_step = next(
+        step for step in actionlint_job["steps"]
+        if step.get("name", "").startswith("Lint workflows")
+    )
+    assert (
+        'actionlint -config-file "$RUNNER_TEMP/actionlint-empty.yml" -color'
+        in lint_step["run"]
+    )
 
     zizmor_job = workflow["jobs"]["zizmor"]
     audit = next(
@@ -934,7 +972,8 @@ def test_cleanup_treats_already_removed_container_as_success(
     monkeypatch.setattr(
         "code_test_lab.docker.subprocess.run",
         lambda argv, **kwargs: CompletedProcess(
-            argv, 1, stdout="", stderr=f"Error response from daemon: No such container: {TEST_CONTAINER_NAME}",
+            argv, 1, stdout="",
+            stderr=f"Error response from daemon: No such container: {TEST_CONTAINER_NAME}",
         ),
     )
     assert remove_container(TEST_CONTAINER_NAME, DOCKER_TARGET) is True
