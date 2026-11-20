@@ -149,12 +149,13 @@ class _XpassGate:
 
     def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
         if self.xpasses:
+            if exitstatus == 0:
+                session.exitstatus = 1
             print(
                 "\nXPASS correctness gate rejected unexpected passes:\n"
                 + "\n".join(f" - {nodeid}" for nodeid in self.xpasses),
                 file=sys.stderr,
             )
-            session.exitstatus = 1
 
 
 TARGET_VENV_PATH = Path("/sandbox/venv")
