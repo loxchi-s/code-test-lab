@@ -137,6 +137,26 @@ class _PytestVersionFinder(importlib.abc.MetaPathFinder):
         return importlib.machinery.ModuleSpec(fullname, self.loader)
 
 
+class _XpassGate:
+    """Fail the harness run for any unexpected pass of an xfail-marked test."""
+
+    def __init__(self) -> None:
+        self.xpasses: list[str] = []
+
+    def pytest_runtest_logreport(self, report: Any) -> None:
+        if report.when == "call" and report.outcome == "passed" and hasattr(report, "wasxfail"):
+            self.xpasses.append(report.nodeid)
+
+    def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
+        if self.xpasses:
+            print(
+                "\\nXPASS correctness gate rejected unexpected passes:\\n"
+                + "\\n".join(f" - {nodeid}" for nodeid in self.xpasses),
+                file=sys.stderr,
+            )
+            session.exitstatus = 1
+
+
 TARGET_VENV_PATH = Path("/sandbox/venv")
 
 
