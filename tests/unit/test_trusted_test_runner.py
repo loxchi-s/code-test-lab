@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from code_test_lab.trusted_test_runner import (
-    configure_target_import_paths,
     configure_subprocess_pytest_version,
+    configure_target_import_paths,
     configure_target_pytest_version,
 )
 
