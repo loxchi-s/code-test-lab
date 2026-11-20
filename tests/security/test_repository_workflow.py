@@ -142,9 +142,9 @@ eval "$VALIDATE_SCRIPT"'''
         )
 
     assert run_validation("public").returncode == 0
-    assert "repository=owner/public-repo\nref=main\n" == output_file.read_text(encoding="utf-8")
+    assert output_file.read_text(encoding="utf-8") == "repository=owner/public-repo\nref=main\n"
     assert run_validation("public", " main ", " pytest-dev/pytest ").returncode == 0
-    assert "repository=pytest-dev/pytest\nref=main\n" == output_file.read_text(encoding="utf-8")
+    assert output_file.read_text(encoding="utf-8") == "repository=pytest-dev/pytest\nref=main\n"
     assert run_validation("public", "   ").returncode != 0
     assert run_validation("public", "main\nmalicious=value").returncode != 0
     assert run_validation("private").returncode != 0
