@@ -115,8 +115,9 @@ class _PytestVersionLoader(importlib.abc.Loader):
         return None
 
     def exec_module(self, module: types.ModuleType) -> None:
-        module.version = str(self.version)
-        module.version_tuple = tuple(self.version.release)
+        dynamic_module = cast(Any, module)
+        dynamic_module.version = str(self.version)
+        dynamic_module.version_tuple = tuple(self.version.release)
 
 
 class _PytestVersionFinder(importlib.abc.MetaPathFinder):
