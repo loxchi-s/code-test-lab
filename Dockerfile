@@ -19,9 +19,13 @@ RUN apk update \
     && pytest_version="$(python -I -c 'import importlib.metadata as metadata; print(metadata.version("pytest"))')" \
     && python -m venv --without-pip /opt/trusted-runner \
     && python -m pip install --no-cache-dir --target /opt/trusted-runner/lib/python3.12/site-packages "pytest==${pytest_version}" \
+    && printf 'sandbox:x:10001:10001:Sandbox User:/tmp:/sbin/nologin\\n' >> /etc/passwd \
+    && printf 'sandbox:x:10001:\\n' >> /etc/group \
+    && python -c "import pwd, grp; assert pwd.getpwuid(10001).pw_name == 'sandbox'; assert grp.getgrgid(10001).gr_name == 'sandbox'" \
     && chown -R 10001:10001 /workspace
 
 COPY src/code_test_lab/trusted_test_runner.py /opt/trusted-runner/trusted_test_runner.py
+COPY src/code_test_lab/trusted_test_runner.py /opt/trusted-runner/lib/python3.12/site-packages/sitecustomize.py
 
 USER 10001:10001
 CMD ["python", "-m", "pytest", "-q"]
