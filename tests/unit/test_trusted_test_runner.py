@@ -322,3 +322,23 @@ def test_xpass_gate_rejects_real_pytest_non_strict_xpass(
 
     assert int(result) == 1
     assert gate.xpasses == ["test_real_xpass.py::test_unexpected_pass"]
+
+
+def test_xpass_gate_preserves_existing_nonzero_exit_status() -> None:
+    from code_test_lab.trusted_test_runner import _XpassGate
+
+    class Report:
+        when = "call"
+        outcome = "passed"
+        wasxfail = "known issue"
+        nodeid = "sample.py::test_unexpected_pass"
+
+    class Session:
+        exitstatus = 2
+
+    gate = _XpassGate()
+    gate.pytest_runtest_logreport(Report())
+    session = Session()
+    gate.pytest_sessionfinish(session, 2)
+
+    assert session.exitstatus == 2
