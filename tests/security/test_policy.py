@@ -206,7 +206,7 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     assert log_options == ["max-size=10m", "max-file=3"]
     forwarded_env = [
         docker_options[index + 1]
-        for index, token in enumerate(docker_options)
+        for index, option in enumerate(docker_options)
         if option == "--env"
     ]
     assert forwarded_env == [
