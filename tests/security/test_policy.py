@@ -41,7 +41,7 @@ def _docker_info_or_metadata(argv: list[str], metadata: object) -> CompletedProc
 
 def _workflow() -> dict:
     # BaseLoader preserves GitHub's unquoted "on" key as a string.
-    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
 
 
 def _has_unquoted_newline(script: str) -> bool:
@@ -229,7 +229,7 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     expected_pairs = {
         "--name": TEST_CONTAINER_NAME,
         "--network": "none",
-        "--tmpfs": "/tmp:rw,noexec,nosuid,size=256m",
+        "--tmpfs": "/tmp:rw,noexec,nosuid,size=256m",  # noqa: S108 - intentional bounded container tmpfs.
         "--memory": "2g",
         "--memory-swap": "2g",
         "--cpus": "2",
@@ -555,7 +555,7 @@ def test_workflow_runs_quality_inside_the_isolated_container() -> None:
     assert cleanup_step["env"]["SANDBOX_CONTAINER"] == (
         "sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
     )
-    assert 'docker rm -f "$SANDBOX_CONTAINER" || true' == cleanup_step["run"]
+    assert cleanup_step["run"] == 'docker rm -f "$SANDBOX_CONTAINER" || true'
     assert "steps.docker-capabilities.outcome == 'success'" in smoke_step["if"]
     assert "test_pytest_is_loaded_from_trusted_image" in smoke_step["run"]
     assert "test_target_mount_is_read_only" in smoke_step["run"]
@@ -750,7 +750,7 @@ def test_workflow_credential_guard_detects_bracket_and_dot_contexts() -> None:
 def test_workflow_security_scans_are_independent_and_cover_merge_history() -> None:
     workflow = yaml.load(
         WORKFLOW_SECURITY_PATH.read_text(encoding="utf-8"),
-        Loader=yaml.BaseLoader,
+        Loader=yaml.BaseLoader,  # noqa: S506 - BaseLoader constructs only basic YAML values.
     )
     jobs = workflow["jobs"]
     assert {"actionlint", "gitleaks", "zizmor"} <= set(jobs)
@@ -983,7 +983,7 @@ def test_resolve_image_id_rejects_invalid_metadata_shape(
         "code_test_lab.docker.subprocess.run",
         lambda *args, **kwargs: _docker_info_or_metadata(args[0], metadata),
     )
-    with pytest.raises((ValueError, TypeError), match="invalid object|missing Config"):
+    with pytest.raises((ValueError, TypeError), match=r"invalid object|missing Config"):
         resolve_image_id("local:test", DOCKER_TARGET)
 
 
