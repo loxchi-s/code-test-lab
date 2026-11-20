@@ -187,11 +187,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Trusted test runner configuration error: {exc}", file=sys.stderr)
         return 2
 
+    # Do not pass the repository root as an explicit collection path.
+    # Doing so overrides pytest's configured testpaths and can collect docs,
+    # examples, and other non-suite files in projects such as pytest itself.
+    # The workflow already sets cwd to the target repository, so pytest can
+    # discover tests using the target project's own configuration.
     return int(pytest.main([
         "-q",
         "-o",
         f"cache_dir={pytest_cache}",
-        str(args.source.resolve()),
     ]))
 
 
