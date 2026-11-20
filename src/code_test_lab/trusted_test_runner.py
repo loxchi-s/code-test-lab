@@ -57,6 +57,21 @@ def configure_target_import_paths(
     return site_packages[0]
 
 
+def _install_pytest_version(version: Version) -> None:
+    """Install validated pytest version metadata into the current interpreter."""
+    import _pytest
+
+    version_tuple = tuple(version.release)
+    version_module = types.ModuleType("_pytest._version")
+    dynamic_version_module = cast(Any, version_module)
+    dynamic_version_module.version = str(version)
+    dynamic_version_module.version_tuple = version_tuple
+    sys.modules["_pytest._version"] = version_module
+    _pytest._version = version_module
+    _pytest.__version__ = str(version)
+    _pytest.version_tuple = version_tuple
+
+
 def configure_target_pytest_version(site_packages: Path) -> None:
     """Apply the prepared distribution version when pytest's generated file is absent."""
     matches = [
@@ -74,24 +89,23 @@ def configure_target_pytest_version(site_packages: Path) -> None:
     except InvalidVersion as exc:
         raise ValueError("prepared pytest distribution has invalid version metadata") from exc
 
-    # pytest's source package falls back to "unknown" when setuptools-scm's
-    # generated _pytest/_version.py is absent. Restore only the validated
-    # distribution metadata; do not execute the target build backend or write
-    # into the read-only target checkout.
-    import _pytest
+    # The source checkout omits setuptools-scm's generated _pytest/_version.py.
+    # Restore validated distribution metadata in this process and export only
+    # that validated version for the trusted child-process bootstrap.
+    _install_pytest_version(version)
+    os.environ["TARGET_PYTEST_VERSION"] = str(version)
 
-    version_tuple = tuple(version.release)
-    version_module = types.ModuleType("_pytest._version")
-    dynamic_version_module = cast(Any, version_module)
-    dynamic_version_module.version = str(version)
-    dynamic_version_module.version_tuple = version_tuple
-    # Some pytest modules import the generated module directly, not only the
-    # attributes re-exported by _pytest. Recreate that trusted metadata module
-    # in memory so the read-only target checkout remains untouched.
-    sys.modules["_pytest._version"] = version_module
-    _pytest._version = version_module
-    _pytest.__version__ = str(version)
-    _pytest.version_tuple = version_tuple
+
+def configure_subprocess_pytest_version() -> None:
+    """Bootstrap target pytest metadata in child interpreters via sitecustomize."""
+    version_text = os.environ.get("TARGET_PYTEST_VERSION")
+    if not version_text:
+        return
+    try:
+        version = Version(version_text)
+    except InvalidVersion as exc:
+        raise RuntimeError("trusted pytest version environment value is invalid") from exc
+    _install_pytest_version(version)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -101,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--venv", type=Path, required=True)
     parser.add_argument("--target-pytest", action="store_true")
     args = parser.parse_args(argv)
+
+    # All writable test state stays on the container's bounded /tmp tmpfs.
+    os.environ.setdefault("HYPOTHESIS_STORAGE_DIRECTORY", "/tmp/hypothesis")
+    os.environ["PYTEST_ADDOPTS"] = "-o cache_dir=/tmp/pytest-cache"
 
     try:
         if args.target_pytest:
@@ -120,10 +138,14 @@ def main(argv: list[str] | None = None) -> int:
 
     return int(pytest.main([
         "-q",
-        "-p",
-        "no:cacheprovider",
+        "-o",
+        "cache_dir=/tmp/pytest-cache",
         str(args.source.resolve()),
     ]))
+
+
+if __name__ == "sitecustomize":
+    configure_subprocess_pytest_version()
 
 
 if __name__ == "__main__":
