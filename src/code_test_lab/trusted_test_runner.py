@@ -28,7 +28,9 @@ def configure_target_import_paths(
 
     site_packages = sorted((venv / "lib").glob("python*/site-packages"))
     if len(site_packages) != 1 or not site_packages[0].is_dir():
-        raise ValueError("prepared virtual environment must contain exactly one site-packages directory")
+        raise ValueError(
+            "prepared virtual environment must contain exactly one site-packages directory"
+        )
 
     target_paths = [
         str(path) for path in (source / "src", source) if path.is_dir()
@@ -90,7 +92,10 @@ def configure_target_pytest_version(site_packages: Path) -> None:
     ]
     if len(matches) != 1:
         raise ValueError(
-            "prepared pytest environment must contain exactly one pytest distribution metadata record"
+            (
+                "prepared pytest environment must contain exactly one pytest "
+                "distribution metadata record"
+            )
         )
 
     try:
@@ -182,7 +187,9 @@ def configure_subprocess_pytest_version() -> None:
     try:
         version = Version(matches[0].version)
     except InvalidVersion as exc:
-        raise RuntimeError("prepared target pytest distribution has invalid version metadata") from exc
+        raise RuntimeError(
+            "prepared target pytest distribution has invalid version metadata"
+        ) from exc
 
     # Do not import _pytest from sitecustomize: that runs before pytest's normal
     # startup and can change plugin initialization order. Resolve its generated
