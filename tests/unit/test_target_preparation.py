@@ -405,7 +405,10 @@ def test_setuptools_package_dir_accepts_supported_root_and_src_mappings(
     )
     for index, configuration in enumerate(configurations):
         source = tmp_path / f"target-{index}"
-        _write_project(source, name="sample", dev_requirements=("pytest>=8",), tool_config=configuration)
+        _write_project(
+            source, name="sample", dev_requirements=("pytest>=8",),
+            tool_config=configuration,
+        )
         (source / "src").mkdir()
         prepare_target_source(source, tmp_path / f"prepared-{index}", COMMIT_SHA)
 
