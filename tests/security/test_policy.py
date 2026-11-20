@@ -188,15 +188,15 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
         flag, value = flag_value.split(" ", maxsplit=1)
         assert option_values.get(flag) == [value]
     readonly_options = [
-        token for token in docker_options
-        if token == "--read-only" or token.startswith("--read-only=")
+        option for option in docker_options
+        if option == "--read-only" or option.startswith("--read-only=")
     ]
     assert readonly_options in (["--read-only"], ["--read-only=true"])
     assert docker_options.count("--log-driver") == 1
     assert docker_options[docker_options.index("--log-driver") + 1] == "json-file"
     log_options = [
         docker_options[index + 1]
-        for index, token in enumerate(docker_options)
+        for index, option in enumerate(docker_options)
         if token == "--log-opt"
     ]
     assert log_options == ["max-size=10m", "max-file=3"]
