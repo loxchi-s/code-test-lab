@@ -120,7 +120,9 @@ def test_repository_validation_rejects_private_and_blank_refs(tmp_path: Path) ->
         "TARGET_REF": "main",
         "GITHUB_OUTPUT": str(output_file),
     })
-    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; };\njq() { printf '%s\\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
+    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; };
+jq() { printf '%s\n' "$TEST_VISIBILITY"; };
+eval "$VALIDATE_SCRIPT"'''
 
     def run_validation(
         visibility: str,
@@ -160,7 +162,9 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
     harness_checkout, target_checkout = checkouts
     assert harness_checkout["with"]["path"] == "sandbox-harness"
     assert harness_checkout["with"]["persist-credentials"] == "false"
-    assert target_checkout["with"]["repository"] == (\n        "${{ steps.validate-target.outputs.repository }}"\n    )
+    assert target_checkout["with"]["repository"] == (
+        "${{ steps.validate-target.outputs.repository }}"
+    )
     assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
@@ -400,7 +404,10 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
 
 
 def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
-    ci_workflow = yaml.load(\n        CI_WORKFLOW_PATH.read_text(encoding="utf-8"),\n        Loader=yaml.BaseLoader,  # noqa: S506\n    )
+    ci_workflow = yaml.load(
+        CI_WORKFLOW_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
     steps = ci_workflow["jobs"]["quality"]["steps"]
     smoke = next(
         step for step in steps
