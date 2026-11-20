@@ -63,10 +63,30 @@ def test_target_pytest_paths_precede_harness_site_packages(
 
     configure_target_import_paths(source, venv, target_pytest=True)
 
-    assert sys.path[trusted_index:trusted_index + 3] == [
-        str(source / "src"), str(source), str(site_packages)
+    assert sys.path[trusted_index:trusted_index + 2] == [
+        str(source / "src"), str(site_packages)
     ]
+    assert str(source) not in sys.path
     assert sys.path.index(str(site_packages)) < sys.path.index(str(trusted_site))
+    assert os.environ["PYTHONPATH"] == os.pathsep.join(
+        (str(source / "src"), str(site_packages))
+    )
+
+    # A repository-root module must not become importable by nested pytester
+    # runs merely because the target source tree is a src-layout project.
+    (source / "test_failures.py").write_text("VALUE = 'shadowed'\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import importlib.util; assert importlib.util.find_spec('test_failures') is None",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    assert result.stdout == ""
 
 
 def test_target_paths_reject_ambiguous_virtualenv_site_packages(tmp_path: Path) -> None:
@@ -146,19 +166,24 @@ def test_target_pytest_uses_validated_prepared_distribution_version(
     assert os.environ["TARGET_PYTEST_VERSION"] == "9.0.0"
 
 
-def test_subprocess_bootstrap_installs_validated_pytest_version(
+def test_subprocess_bootstrap_installs_validated_pytest_version_lazily(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    target_pytest = types.ModuleType("_pytest")
-    monkeypatch.setitem(sys.modules, "_pytest", target_pytest)
     monkeypatch.setenv("TARGET_PYTEST_VERSION", "9.2.0+sandbox.g123456789abc")
 
     configure_subprocess_pytest_version()
 
-    assert target_pytest.__version__ == "9.2.0+sandbox.g123456789abc"
-    assert target_pytest.version_tuple == (9, 2, 0)
-    assert sys.modules["_pytest._version"].version == "9.2.0+sandbox.g123456789abc"
-    assert sys.modules["_pytest._version"].version_tuple == (9, 2, 0)
+    finder = next(
+        finder for finder in sys.meta_path
+        if type(finder).__name__ == "_PytestVersionFinder"
+    )
+    spec = finder.find_spec("_pytest._version")
+    assert spec is not None
+    module = types.ModuleType("_pytest._version")
+    finder.loader.exec_module(module)
+
+    assert module.version == "9.2.0+sandbox.g123456789abc"
+    assert module.version_tuple == (9, 2, 0)
 
 
 def test_subprocess_bootstrap_rejects_invalid_version(
