@@ -92,10 +92,8 @@ def configure_target_pytest_version(site_packages: Path) -> None:
     ]
     if len(matches) != 1:
         raise ValueError(
-            (
-                "prepared pytest environment must contain exactly one pytest "
-                "distribution metadata record"
-            )
+            "prepared pytest environment must contain exactly one pytest "
+            "distribution metadata record"
         )
 
     try:
