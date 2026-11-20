@@ -164,13 +164,23 @@ def test_target_pytest_uses_validated_prepared_distribution_version(
     assert sys.modules["_pytest._version"].version == "9.0.0"
     assert sys.modules["_pytest._version"].version_tuple == (9, 0, 0)
     assert target_pytest._version is sys.modules["_pytest._version"]
-    assert os.environ["TARGET_PYTEST_VERSION"] == "9.0.0"
+    assert "TARGET_PYTEST_VERSION" not in os.environ
 
 
-def test_subprocess_bootstrap_installs_validated_pytest_version_lazily(
-    monkeypatch: pytest.MonkeyPatch,
+def test_subprocess_bootstrap_reads_read_only_distribution_metadata_not_mutable_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("TARGET_PYTEST_VERSION", "9.2.0+sandbox.g123456789abc")
+    import code_test_lab.trusted_test_runner as runner
+
+    site_packages = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    dist_info = site_packages / "pytest-9.2.0+sandbox.g123456789abc.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(
+        "Metadata-Version: 2.1\\nName: pytest\\nVersion: 9.2.0+sandbox.g123456789abc\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runner, "TARGET_VENV_PATH", tmp_path / "venv")
+    monkeypatch.setenv("TARGET_PYTEST_VERSION", "999.0")
 
     configure_subprocess_pytest_version()
 
@@ -187,12 +197,21 @@ def test_subprocess_bootstrap_installs_validated_pytest_version_lazily(
     assert module.version_tuple == (9, 2, 0)
 
 
-def test_subprocess_bootstrap_rejects_invalid_version(
-    monkeypatch: pytest.MonkeyPatch,
+def test_subprocess_bootstrap_rejects_invalid_distribution_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("TARGET_PYTEST_VERSION", "not-a-version")
+    import code_test_lab.trusted_test_runner as runner
 
-    with pytest.raises(RuntimeError, match="environment value is invalid"):
+    site_packages = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    dist_info = site_packages / "pytest-unknown.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(
+        "Metadata-Version: 2.1\\nName: pytest\\nVersion: unknown\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runner, "TARGET_VENV_PATH", tmp_path / "venv")
+
+    with pytest.raises(RuntimeError, match="invalid version metadata"):
         configure_subprocess_pytest_version()
 
 
