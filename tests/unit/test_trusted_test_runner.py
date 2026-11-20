@@ -238,7 +238,7 @@ def test_runner_respects_target_configured_testpaths(
 ) -> None:
     import code_test_lab.trusted_test_runner as runner
 
-    captured: list[str] = []
+    captured: list[str] = []\n    captured_plugins: list[object] = []
     monkeypatch.setattr(
         runner,
         "configure_target_import_paths",
@@ -247,7 +247,7 @@ def test_runner_respects_target_configured_testpaths(
     monkeypatch.setattr(
         pytest,
         "main",
-        lambda args: captured.extend(args) or 0,
+        lambda args, plugins=None: captured.extend(args) or captured_plugins.extend(plugins or []) or 0,
     )
 
     result = main(["--source", str(tmp_path / "target"), "--venv", str(tmp_path / "venv")])
@@ -255,7 +255,7 @@ def test_runner_respects_target_configured_testpaths(
     assert result == 0
     assert captured[:4] == ["-q", "-r", "fEXsx", "-o"]
     assert captured[4].startswith("cache_dir=")
-    assert captured[5:] == ["-o", "xfail_strict=true"]
+    assert captured[5:] == ["-o", "xfail_strict=true"]\n    assert len(captured_plugins) == 1\n    assert type(captured_plugins[0]).__name__ == "_XpassGate"
     assert str(tmp_path / "target") not in captured
 
 
