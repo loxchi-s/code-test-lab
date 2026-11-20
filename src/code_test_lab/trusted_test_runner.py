@@ -215,6 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         "fEXsx",
         "-o",
         f"cache_dir={pytest_cache}",
+        "-o",
+        "xfail_strict=true",
     ]))
 
 
