@@ -253,6 +253,6 @@ def test_runner_respects_target_configured_testpaths(
     result = main(["--source", str(tmp_path / "target"), "--venv", str(tmp_path / "venv")])
 
     assert result == 0
-    assert captured[:2] == ["-q", "-o"]
-    assert captured[2].startswith("cache_dir=")
+    assert captured[:4] == ["-q", "-r", "fEXsx", "-o"]
+    assert captured[4].startswith("cache_dir=")
     assert str(tmp_path / "target") not in captured
