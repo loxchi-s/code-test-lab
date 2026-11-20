@@ -287,8 +287,8 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert test_options["--workdir"] == ["/input/target"]
     assert test_options["--mount"][1].endswith(",readonly")
     assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]
-    assert test_options["--memory"] == ["2g"]
-    assert test_options["--memory-swap"] == ["2g"]
+    assert test_options["--memory"] == ["4g"]
+    assert test_options["--memory-swap"] == ["4g"]
     assert test_options["--cpus"] == ["2"]
     assert test_options["--pids-limit"] == ["256"]
     assert test_options["--cap-drop"] == ["ALL"]
