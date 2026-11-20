@@ -12,6 +12,7 @@ from code_test_lab.trusted_test_runner import (
     configure_subprocess_pytest_version,
     configure_target_import_paths,
     configure_target_pytest_version,
+    main,
 )
 
 
@@ -211,3 +212,28 @@ def test_target_pytest_rejects_missing_or_invalid_distribution_version(
     )
     with pytest.raises(ValueError, match="invalid version metadata"):
         configure_target_pytest_version(site_packages)
+
+
+def test_runner_respects_target_configured_testpaths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import code_test_lab.trusted_test_runner as runner
+
+    captured: list[str] = []
+    monkeypatch.setattr(
+        runner,
+        "configure_target_import_paths",
+        lambda source, venv, *, target_pytest=False: tmp_path / "site-packages",
+    )
+    monkeypatch.setattr(
+        pytest,
+        "main",
+        lambda args: captured.extend(args) or 0,
+    )
+
+    result = main(["--source", str(tmp_path / "target"), "--venv", str(tmp_path / "venv")])
+
+    assert result == 0
+    assert captured[:2] == ["-q", "-o"]
+    assert captured[2].startswith("cache_dir=")
+    assert str(tmp_path / "target") not in captured
