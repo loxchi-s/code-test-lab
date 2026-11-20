@@ -295,3 +295,30 @@ def test_xpass_gate_ignores_regular_pass_and_non_call_reports() -> None:
     gate = _XpassGate()
     gate.pytest_runtest_logreport(Report())
     assert gate.xpasses == []
+
+
+
+def test_xpass_gate_rejects_real_pytest_non_strict_xpass(
+    tmp_path: Path,
+) -> None:
+    from code_test_lab.trusted_test_runner import _XpassGate
+
+    test_file = tmp_path / "test_real_xpass.py"
+    test_file.write_text(
+        "import pytest\n"
+        "@pytest.mark.xfail(reason='synthetic regression', strict=False)\n"
+        "def test_unexpected_pass():\n"
+        "    assert True\n"
+        "def test_regular_pass():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+
+    gate = _XpassGate()
+    result = pytest.main(
+        ["-q", "-p", "no:cacheprovider", str(test_file)],
+        plugins=[gate],
+    )
+
+    assert int(result) == 1
+    assert gate.xpasses == ["test_real_xpass.py::test_unexpected_pass"]
