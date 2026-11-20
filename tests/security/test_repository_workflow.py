@@ -14,7 +14,11 @@ CI_WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 
 
 def _workflow() -> dict:
-    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
+    # BaseLoader preserves the workflow "on" key without constructing Python objects.
+    return yaml.load(
+        WORKFLOW_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
 
 
 def _docker_run_tokens(script: str) -> list[str]:
@@ -156,7 +160,7 @@ def test_external_checkout_uses_fixed_workspace_and_no_private_token() -> None:
     harness_checkout, target_checkout = checkouts
     assert harness_checkout["with"]["path"] == "sandbox-harness"
     assert harness_checkout["with"]["persist-credentials"] == "false"
-    assert target_checkout["with"]["repository"] == "${{ steps.validate-target.outputs.repository }}"
+    assert target_checkout["with"]["repository"] == (\n        "${{ steps.validate-target.outputs.repository }}"\n    )
     assert target_checkout["with"]["ref"] == "${{ steps.validate-target.outputs.ref }}"
     assert target_checkout["with"]["path"] == "target-repository"
     assert target_checkout["with"]["persist-credentials"] == "false"
@@ -212,7 +216,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
         "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox",
     ]
     assert prepare_options["--workdir"] == ["/sandbox"]
-    assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]  # noqa: S108 - bounded host workspace tmpfs.
+    assert prepare_options["--tmpfs"] == ["/tmp:rw,nosuid,size=1g"]  # noqa: S108
     assert prepare_options["--memory"] == ["4g"]
     assert prepare_options["--memory-swap"] == ["4g"]
     assert prepare_options["--cpus"] == ["2"]
@@ -255,7 +259,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     assert metadata_options["--mount"] == [
         "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly"
     ]
-    assert metadata_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=64m"]  # noqa: S108 - bounded metadata tmpfs.
+    assert metadata_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=64m"]  # noqa: S108
     assert metadata_options["--memory"] == ["512m"]
     assert metadata_options["--memory-swap"] == ["512m"]
     assert metadata_options["--cpus"] == ["1"]
@@ -291,7 +295,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
     ]
     assert test_options["--workdir"] == ["/input/target"]
     assert test_options["--mount"][1].endswith(",readonly")
-    assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]  # noqa: S108 - bounded test tmpfs.
+    assert test_options["--tmpfs"] == ["/tmp:rw,noexec,nosuid,size=256m"]  # noqa: S108
     assert test_options["--memory"] == ["4g"]
     assert test_options["--memory-swap"] == ["4g"]
     assert test_options["--cpus"] == ["2"]
@@ -396,7 +400,7 @@ def test_readme_documents_manual_dispatch_and_dependency_contract() -> None:
 
 
 def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
-    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
+    ci_workflow = yaml.load(\n        CI_WORKFLOW_PATH.read_text(encoding="utf-8"),\n        Loader=yaml.BaseLoader,  # noqa: S506\n    )
     steps = ci_workflow["jobs"]["quality"]["steps"]
     smoke = next(
         step for step in steps
