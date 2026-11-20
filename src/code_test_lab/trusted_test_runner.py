@@ -211,6 +211,8 @@ def main(argv: list[str] | None = None) -> int:
     # discover tests using the target project's own configuration.
     return int(pytest.main([
         "-q",
+        "-r",
+        "fEXsx",
         "-o",
         f"cache_dir={pytest_cache}",
     ]))
