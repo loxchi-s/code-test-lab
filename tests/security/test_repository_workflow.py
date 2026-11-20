@@ -120,7 +120,7 @@ def test_repository_validation_rejects_private_and_blank_refs(tmp_path: Path) ->
         "TARGET_REF": "main",
         "GITHUB_OUTPUT": str(output_file),
     })
-    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; }; jq() { printf '%s\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
+    wrapper = r'''curl() { printf '{"visibility":"%s"}' "$TEST_VISIBILITY"; };\njq() { printf '%s\\n' "$TEST_VISIBILITY"; }; eval "$VALIDATE_SCRIPT"'''
 
     def run_validation(
         visibility: str,
