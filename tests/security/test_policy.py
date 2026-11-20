@@ -41,7 +41,11 @@ def _docker_info_or_metadata(argv: list[str], metadata: object) -> CompletedProc
 
 def _workflow() -> dict:
     # BaseLoader preserves GitHub's unquoted "on" key as a string.
-    return yaml.load(WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # noqa: S506 - BaseLoader constructs only basic YAML values.
+    # BaseLoader preserves the workflow "on" key without constructing Python objects.
+    return yaml.load(
+        WORKFLOW_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
 
 
 def _has_unquoted_newline(script: str) -> bool:
@@ -229,7 +233,8 @@ def test_policy_generates_exact_restricted_docker_argv() -> None:
     expected_pairs = {
         "--name": TEST_CONTAINER_NAME,
         "--network": "none",
-        "--tmpfs": "/tmp:rw,noexec,nosuid,size=256m",  # noqa: S108 - intentional bounded container tmpfs.
+        # This test asserts the explicitly size-bounded container tmpfs policy.
+        "--tmpfs": "/tmp:rw,noexec,nosuid,size=256m",  # noqa: S108
         "--memory": "2g",
         "--memory-swap": "2g",
         "--cpus": "2",
@@ -620,7 +625,7 @@ def test_container_timeout_is_derived_from_policy() -> None:
         ("cpus: 2", "cpus: 0.1234567891", "NanoCPUs"),
         ("pids_limit: 256", "pids_limit: 99999", "pids_limit"),
         ("timeout_minutes: 20", "timeout_minutes: 21", "timeout_minutes"),
-        ('user: "10001:10001"', 'user: "١٠٠٠١:10001"', "ASCII"),  # noqa: RUF001 - intentional non-ASCII test input.
+        ('user: "10001:10001"', 'user: "١٠٠٠١:10001"', "ASCII"),  # noqa: RUF001
     ],
 )
 def test_policy_rejects_unsafe_execution_limits(
