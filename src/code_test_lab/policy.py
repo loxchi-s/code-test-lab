@@ -183,7 +183,7 @@ def load_execution_policy(path: Path) -> dict[str, Any]:
         _validate_yaml_token_depth(policy_text)
         document = yaml.load(  # nosec B506 - custom loader inherits SafeLoader and rejects duplicate keys.
             policy_text,
-            Loader=_UniqueKeySafeLoader,
+            Loader=_UniqueKeySafeLoader,  # noqa: S506 - subclass of SafeLoader with duplicate-key rejection.
         )
     except PolicyError:
         raise
