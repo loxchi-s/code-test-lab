@@ -248,7 +248,9 @@ def test_runner_respects_target_configured_testpaths(
     monkeypatch.setattr(
         pytest,
         "main",
-        lambda args, plugins=None: captured.extend(args) or captured_plugins.extend(plugins or []) or 0,
+        lambda args, plugins=None: (
+            captured.extend(args) or captured_plugins.extend(plugins or []) or 0
+        ),
     )
 
     result = main(["--source", str(tmp_path / "target"), "--venv", str(tmp_path / "venv")])
