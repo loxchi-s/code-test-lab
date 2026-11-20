@@ -176,7 +176,7 @@ def test_subprocess_bootstrap_reads_read_only_distribution_metadata_not_mutable_
     dist_info = site_packages / "pytest-9.2.0+sandbox.g123456789abc.dist-info"
     dist_info.mkdir(parents=True)
     (dist_info / "METADATA").write_text(
-        "Metadata-Version: 2.1\\nName: pytest\\nVersion: 9.2.0+sandbox.g123456789abc\\n",
+        "Metadata-Version: 2.1\nName: pytest\nVersion: 9.2.0+sandbox.g123456789abc\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runner, "TARGET_VENV_PATH", tmp_path / "venv")
@@ -206,7 +206,7 @@ def test_subprocess_bootstrap_rejects_invalid_distribution_metadata(
     dist_info = site_packages / "pytest-unknown.dist-info"
     dist_info.mkdir(parents=True)
     (dist_info / "METADATA").write_text(
-        "Metadata-Version: 2.1\\nName: pytest\\nVersion: unknown\\n",
+        "Metadata-Version: 2.1\nName: pytest\nVersion: unknown\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(runner, "TARGET_VENV_PATH", tmp_path / "venv")
