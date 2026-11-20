@@ -20,13 +20,13 @@ from .docker import (
 from .policy import PolicyError, load_execution_policy
 
 
-class _SigtermReceived(Exception):
+class _SigtermReceivedError(Exception):
     """Raised from the signal handler to unwind the Docker client call."""
 
 
 def _raise_on_sigterm(signum: int, frame: object) -> None:
     del signum, frame
-    raise _SigtermReceived
+    raise _SigtermReceivedError
 
 
 def main() -> int:
@@ -55,7 +55,7 @@ def main() -> int:
         previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, _raise_on_sigterm)
         try:
-            completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container.
+            completed = subprocess.run(  # noqa: S603 - validated argv; no shell; policy bounds the container.
                 docker_argv, check=False, shell=False,
                 timeout=float(execution["timeout_minutes"]) * 60,
             )
@@ -78,7 +78,7 @@ def main() -> int:
     except (ValueError, TypeError) as exc:
         print(f"Invalid execution request: {exc}", file=sys.stderr)
         return 2
-    except _SigtermReceived:
+    except _SigtermReceivedError:
         cleanup_ok = container_name is not None and remove_container(container_name, docker_target)
         if not cleanup_ok:
             print(
