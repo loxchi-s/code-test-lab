@@ -7,9 +7,9 @@ import os
 import sys
 import sysconfig
 import types
-from typing import Any, cast
 from importlib import metadata
 from pathlib import Path
+from typing import Any, cast
 
 from packaging.version import InvalidVersion, Version
 
