@@ -229,7 +229,7 @@ jobs:
             --mount "type=bind,src=${TARGET_SOURCE},dst=/input/target,readonly" \
             --workdir /input/target \
             --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
+            --memory 4g --memory-swap 4g --cpus 2 --pids-limit 256 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
