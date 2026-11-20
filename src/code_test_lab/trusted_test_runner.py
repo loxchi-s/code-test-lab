@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib.abc
+import importlib.machinery
 import os
 import sys
 import sysconfig
@@ -31,6 +33,12 @@ def configure_target_import_paths(
     target_paths = [
         str(path) for path in (source / "src", source) if path.is_dir()
     ]
+    # The pytest source tree uses a src layout. Adding its repository root to
+    # sys.path makes documentation examples importable as top-level modules;
+    # nested pytester runs can then collide with generated modules of the same
+    # name. The src directory is sufficient for pytest and _pytest imports.
+    if target_pytest and (source / "src").is_dir():
+        target_paths = [str(source / "src")]
     target_paths.append(str(site_packages[0]))
 
     # PYTHONPATH is inherited by ordinary Python child processes. Python does not
@@ -97,8 +105,39 @@ def configure_target_pytest_version(site_packages: Path) -> None:
     os.environ["TARGET_PYTEST_VERSION"] = str(version)
 
 
+class _PytestVersionLoader(importlib.abc.Loader):
+    """Provide generated pytest version metadata without importing _pytest early."""
+
+    def __init__(self, version: Version) -> None:
+        self.version = version
+
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> None:
+        return None
+
+    def exec_module(self, module: types.ModuleType) -> None:
+        module.version = str(self.version)
+        module.version_tuple = tuple(self.version.release)
+
+
+class _PytestVersionFinder(importlib.abc.MetaPathFinder):
+    """Supply the setuptools-scm generated module when target pytest imports it."""
+
+    def __init__(self, version: Version) -> None:
+        self.loader = _PytestVersionLoader(version)
+
+    def find_spec(
+        self,
+        fullname: str,
+        path: object = None,
+        target: types.ModuleType | None = None,
+    ) -> importlib.machinery.ModuleSpec | None:
+        if fullname != "_pytest._version":
+            return None
+        return importlib.machinery.ModuleSpec(fullname, self.loader)
+
+
 def configure_subprocess_pytest_version() -> None:
-    """Bootstrap target pytest metadata in child interpreters via sitecustomize."""
+    """Bootstrap target pytest metadata lazily in child interpreters via sitecustomize."""
     version_text = os.environ.get("TARGET_PYTEST_VERSION")
     if not version_text:
         return
@@ -106,7 +145,14 @@ def configure_subprocess_pytest_version() -> None:
         version = Version(version_text)
     except InvalidVersion as exc:
         raise RuntimeError("trusted pytest version environment value is invalid") from exc
-    _install_pytest_version(version)
+
+    # Do not import _pytest from sitecustomize: that runs before pytest's normal
+    # startup and can change plugin initialization order. Resolve its generated
+    # version module only when target pytest imports it.
+    sys.meta_path[:] = [
+        finder for finder in sys.meta_path if not isinstance(finder, _PytestVersionFinder)
+    ]
+    sys.meta_path.insert(0, _PytestVersionFinder(version))
 
 
 def main(argv: list[str] | None = None) -> int:
