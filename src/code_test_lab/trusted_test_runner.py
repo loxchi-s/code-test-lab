@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         f"cache_dir={pytest_cache}",
         "-o",
         "xfail_strict=true",
-    ]))
+    ], plugins=[_XpassGate()]))
 
 
 if __name__ == "sitecustomize":
