@@ -23,14 +23,58 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/code_test_lab"]
 
+# Pytest: report all non-passing outcomes and reject unexpected passes.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--tb=short",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+  "docker: tests that require a running Docker daemon",
+  "docker_limits: tests requiring cgroup PidsLimit, MemoryLimit, and SwapLimit",
+  "slow: tests that take a long time to run",
+]
 
+# Ruff: lint source and tests; keep security assertions enabled in production.
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+src = ["src", "tests"]
 
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "N", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S603", "S607"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# Mypy: strict type checking for the application package.
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["code_test_lab"]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+
+# Bandit: scan application source; severity threshold is configured by CI CLI.
+[tool.bandit]
+targets = ["src/code_test_lab"]
+exclude_dirs = ["tests"]
+skips = []
+
+# Import Linter: preserve inward dependency direction and module boundaries.
 [tool.importlinter]
 root_package = "code_test_lab"
 
@@ -42,6 +86,7 @@ forbidden_modules = [
   "code_test_lab.cli",
   "code_test_lab.docker",
   "code_test_lab.isolation",
+  "code_test_lab.target_preparation",
 ]
 
 [[tool.importlinter.contracts]]
@@ -52,10 +97,25 @@ forbidden_modules = [
   "code_test_lab.cli",
   "code_test_lab.policy",
   "code_test_lab.isolation",
+  "code_test_lab.target_preparation",
 ]
 
 [[tool.importlinter.contracts]]
 name = "CLI orchestration must not depend on compatibility facade"
 type = "forbidden"
 source_modules = ["code_test_lab.cli"]
-forbidden_modules = ["code_test_lab.isolation"]
+forbidden_modules = [
+  "code_test_lab.isolation",
+  "code_test_lab.target_preparation",
+]
+
+[[tool.importlinter.contracts]]
+name = "Target preparation must not depend on runtime orchestration"
+type = "forbidden"
+source_modules = ["code_test_lab.target_preparation"]
+forbidden_modules = [
+  "code_test_lab.cli",
+  "code_test_lab.docker",
+  "code_test_lab.isolation",
+  "code_test_lab.policy",
+]

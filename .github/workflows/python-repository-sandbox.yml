@@ -18,9 +18,9 @@ permissions:
 
 jobs:
   python-sandbox:
-    name: Checkout and test external Python repository
+    name: Checkout, prepare, and test external Python repository
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -69,6 +69,7 @@ jobs:
           fi
 
       - name: Checkout target repository into isolated workspace
+        id: checkout-target
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ steps.validate-target.outputs.repository }}
@@ -83,7 +84,8 @@ jobs:
         working-directory: sandbox-harness
         run: docker build --pull --tag "code-test-lab-python:${GITHUB_SHA}" .
 
-      - name: Verify Docker daemon PID limit support
+      - name: Verify Docker daemon resource-limit support
+        id: docker-capabilities
         if: ${{ steps.build-image.outcome == 'success' }}
         timeout-minutes: 2
         run: |
@@ -97,10 +99,27 @@ jobs:
             echo "::error::Docker daemon must explicitly support PID, memory, and swap limits"
             exit 2
           fi
+          if jq -e '(.Warnings // []) | any(.[]; test("pids limit"; "i"))' <<< "$info" >/dev/null; then
+            echo "::error::Docker daemon reports that PID limits are unsupported"
+            exit 2
+          fi
 
-      - name: Run target pytest suite without network or credentials
-        if: ${{ steps.build-image.outcome == 'success' }}
-        timeout-minutes: 20
+      - name: Create size-bounded host tmpfs workspace
+        id: prepare-workspace
+        if: ${{ steps.docker-capabilities.outcome == 'success' }}
+        run: |
+          workspace="$(mktemp -d "$RUNNER_TEMP/python-target.XXXXXX")"
+          printf 'workspace=%s\n' "$workspace" >> "$GITHUB_OUTPUT"
+          sudo mount -t tmpfs -o size=2g,uid=10001,gid=10001,mode=0755 tmpfs "$workspace"
+
+      - name: Prepare target dependencies in restricted network container
+        id: prepare-dependencies
+        if: ${{ steps.prepare-workspace.outcome == 'success' }}
+        timeout-minutes: 15
+        env:
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+          TARGET_COMMIT: ${{ steps.checkout-target.outputs.commit }}
+          PREP_CONTAINER: python-target-prepare-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           marker="$(cat /proc/sys/kernel/random/uuid)"
           restore_workflow_commands() {
@@ -111,22 +130,136 @@ jobs:
           }
           trap restore_workflow_commands EXIT
           printf '::stop-commands::%s\n' "$marker"
-          docker run --rm \
-            --network none \
+          docker run --rm --name "$PREP_CONTAINER" \
+            --network bridge \
             --read-only \
-            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/workspace/target,readonly" \
-            --workdir /workspace/target \
-            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
-            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly" \
+            --mount "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox" \
+            --workdir /sandbox \
+            --tmpfs /tmp:rw,nosuid,size=1g \
+            --memory 4g --memory-swap 4g --cpus 2 --pids-limit 256 \
             --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
             --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
-            --env PYTHONDONTWRITEBYTECODE=1 \
-            --env PYTHONPYCACHEPREFIX=/tmp/pycache \
-            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-            --env XDG_CACHE_HOME=/tmp/cache \
+            --env "TARGET_COMMIT=${TARGET_COMMIT}" \
+            --env HOME=/tmp --env PIP_NO_CACHE_DIR=1 --env PIP_DISABLE_PIP_VERSION_CHECK=1 \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
-            --entrypoint python \
+            --entrypoint /bin/sh \
             "code-test-lab-python:${GITHUB_SHA}" \
-            -I -c 'import sys; sys.dont_write_bytecode = True; import pytest; sys.path.insert(0, "/workspace/target"); raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", "/workspace/target"]))' 2>&1
+            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --destination /sandbox/source --commit-sha "$TARGET_COMMIT" --requirements-file /tmp/target-requirements.txt --distribution-file /tmp/target-distribution
+            cd /sandbox/source
+            python -m venv /sandbox/venv
+            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --requirement /tmp/target-requirements.txt
+            IFS= read -r TARGET_DISTRIBUTION < /tmp/target-distribution
+            if /sandbox/venv/bin/python -I -c "import importlib.metadata as metadata, sys; metadata.version(sys.argv[1])" "$TARGET_DISTRIBUTION" >/dev/null 2>&1; then
+              TARGET_SEED_VERSION=$(/sandbox/venv/bin/python -I -c "import importlib.metadata as metadata, sys; print(metadata.version(sys.argv[1]))" "$TARGET_DISTRIBUTION")
+              /sandbox/venv/bin/python -m pip uninstall --yes "$TARGET_DISTRIBUTION"
+            else
+              TARGET_SEED_VERSION=""
+            fi
+            python -I -m code_test_lab.target_preparation --source /sandbox/source --commit-sha "$TARGET_COMMIT" --seed-version "$TARGET_SEED_VERSION" --env-file /tmp/scm-overrides
+            while IFS= read -r override; do
+              case "$override" in
+                SETUPTOOLS_SCM_PRETEND_VERSION=*|SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*|VCS_VERSIONING_PRETEND_VERSION_FOR_*)
+                  export "$override"
+                  ;;
+                *)
+                  echo "::error::target preparation returned an invalid environment variable"
+                  exit 2
+                  ;;
+              esac
+            done < /tmp/scm-overrides
+            /sandbox/venv/bin/python -m pip install --no-cache-dir --only-binary=:all: --disable-pip-version-check --no-deps --editable .
+            /sandbox/venv/bin/python -c "from pathlib import Path; import pytest; print(\"Prepared pytest from:\", pytest.__file__); source = Path(\"/sandbox/source\"); module = Path(pytest.__file__).resolve(); package_dirs = (source / \"src\", source); assert not any((root / \"pytest\" / \"__init__.py\").is_file() for root in package_dirs) or any(module.is_relative_to(root) for root in package_dirs), \"pytest did not resolve from the target source tree\""' 2>&1
+
+      - name: Resolve target distribution with trusted metadata parser
+        id: target-metadata
+        if: ${{ steps.prepare-dependencies.outcome == 'success' }}
+        timeout-minutes: 2
+        env:
+          TARGET_COMMIT: ${{ steps.checkout-target.outputs.commit }}
+        run: |
+          metadata_file="$(mktemp "$RUNNER_TEMP/target-distribution.XXXXXX")"
+          trap 'rm -f "$metadata_file"' EXIT
+          docker run --rm \
+            --network none \
+            --read-only \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/target-repository,dst=/input/target,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --log-driver json-file --log-opt max-size=1m --log-opt max-file=1 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --env "TARGET_COMMIT=${TARGET_COMMIT}" \
+            --entrypoint /bin/sh \
+            "code-test-lab-python:${GITHUB_SHA}" \
+            -ec 'python -I -m code_test_lab.target_preparation --source /input/target --commit-sha "$TARGET_COMMIT" --distribution-file /tmp/target-distribution >/dev/null
+            cat /tmp/target-distribution' > "$metadata_file"
+          distribution="$(cat "$metadata_file")"
+          distribution="${distribution,,}"
+          if [[ ! "$distribution" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+            echo "::error::trusted metadata parser returned an invalid distribution name"
+            exit 2
+          fi
+          printf 'distribution=%s\n' "$distribution" >> "$GITHUB_OUTPUT"
+
+      - name: Run target pytest suite without network or credentials
+        if: ${{ steps.target-metadata.outcome == 'success' }}
+        timeout-minutes: 20
+        env:
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+          TARGET_SOURCE: ${{ github.workspace }}/target-repository
+          TARGET_DISTRIBUTION: ${{ steps.target-metadata.outputs.distribution }}
+          TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          marker="$(cat /proc/sys/kernel/random/uuid)"
+          restore_workflow_commands() {
+            local exit_code=$?
+            trap - EXIT
+            printf '\n::%s::\n' "$marker"
+            exit "$exit_code"
+          }
+          trap restore_workflow_commands EXIT
+          printf '::stop-commands::%s\n' "$marker"
+          # Keep target pytest plugin autoload enabled: the target suite may
+          # rely on normal entry-point loading. Plugins execute only inside
+          # this networkless, credential-free, resource-limited container.
+          docker run --rm --name "$TEST_CONTAINER" \
+            --network none \
+            --read-only \
+            --mount "type=bind,src=${TARGET_WORKSPACE},dst=/sandbox,readonly" \
+            --mount "type=bind,src=${TARGET_SOURCE},dst=/input/target,readonly" \
+            --workdir /input/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+            --memory 4g --memory-swap 4g --cpus 2 --pids-limit 256 \
+            --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+            --env HTTP_PROXY= --env HTTPS_PROXY= --env ALL_PROXY= --env FTP_PROXY= --env NO_PROXY= \
+            --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
+            --env XDG_CACHE_HOME=/tmp/cache \
+            --env LANG=C.UTF-8 \
+            --env HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis \
+            --env "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --entrypoint /bin/sh \
+            "code-test-lab-python:${GITHUB_SHA}" \
+            -ec 'if [ "$TARGET_DISTRIBUTION" = "pytest" ]; then
+              exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv --target-pytest
+            fi
+            exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv' 2>&1
+
+      - name: Remove prepared target containers and unmount tmpfs workspace
+        if: ${{ always() }}
+        env:
+          PREP_CONTAINER: python-target-prepare-${{ github.run_id }}-${{ github.run_attempt }}
+          TEST_CONTAINER: python-target-test-${{ github.run_id }}-${{ github.run_attempt }}
+          TARGET_WORKSPACE: ${{ steps.prepare-workspace.outputs.workspace }}
+        run: |
+          docker rm -f "$PREP_CONTAINER" "$TEST_CONTAINER" >/dev/null 2>&1 || true
+          if [[ -n "$TARGET_WORKSPACE" && "$TARGET_WORKSPACE" == "$RUNNER_TEMP"/python-target.* ]]; then
+            if mountpoint -q "$TARGET_WORKSPACE"; then
+              sudo umount "$TARGET_WORKSPACE"
+            fi
+            rmdir "$TARGET_WORKSPACE" 2>/dev/null || true
+          fi

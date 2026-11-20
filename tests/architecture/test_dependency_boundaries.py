@@ -10,9 +10,11 @@ PACKAGE_NAME = "code_test_lab"
 
 # Policy and Docker are lower-level modules; CLI orchestration may depend on them.
 FORBIDDEN_DEPENDENCIES = {
-    "policy": {"cli", "docker", "isolation"},
-    "docker": {"cli", "policy", "isolation"},
-    "cli": {"isolation"},
+    "policy": {"cli", "docker", "isolation", "target_preparation"},
+    "docker": {"cli", "policy", "isolation", "target_preparation"},
+    "cli": {"isolation", "target_preparation"},
+    "isolation": {"target_preparation"},
+    "target_preparation": {"cli", "docker", "policy", "isolation"},
 }
 
 
