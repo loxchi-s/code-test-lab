@@ -255,4 +255,5 @@ def test_runner_respects_target_configured_testpaths(
     assert result == 0
     assert captured[:4] == ["-q", "-r", "fEXsx", "-o"]
     assert captured[4].startswith("cache_dir=")
+    assert captured[5:] == ["-o", "xfail_strict=true"]
     assert str(tmp_path / "target") not in captured
