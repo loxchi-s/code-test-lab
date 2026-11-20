@@ -201,13 +201,13 @@ def test_ci_permissions_and_untrusted_contexts_are_restricted() -> None:
     log_options = [
         docker_options[index + 1]
         for index, option in enumerate(docker_options)
-        if token == "--log-opt"
+        if option == "--log-opt"
     ]
     assert log_options == ["max-size=10m", "max-file=3"]
     forwarded_env = [
         docker_options[index + 1]
         for index, token in enumerate(docker_options)
-        if token == "--env"
+        if option == "--env"
     ]
     assert forwarded_env == [
         "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "FTP_PROXY=", "NO_PROXY=",
@@ -904,7 +904,7 @@ def test_main_interrupt_before_container_launch_returns_130_without_cleanup(
 def test_workflow_security_uses_trusted_gitleaks_config_and_no_zizmor_config() -> None:
     workflow = yaml.load(
         WORKFLOW_SECURITY_PATH.read_text(encoding="utf-8"),
-        Loader=yaml.BaseLoader,
+        Loader=yaml.BaseLoader,  # noqa: S506
     )
     gitleaks_job = workflow["jobs"]["gitleaks"]
     scan_step = next(
