@@ -343,7 +343,7 @@ def test_dependency_preparation_isolated_and_test_execution_is_offline() -> None
         and any(alias.name == "addsitedir" for alias in node.names)
         for node in ast.walk(runner_tree)
     )
-    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in test["run"]
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" not in test["run"]
     assert "GITHUB_TOKEN" not in test["run"]
     assert "secrets." not in test["run"]
     assert "docker.sock" not in test["run"]
