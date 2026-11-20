@@ -151,7 +151,8 @@ jobs:
           from packaging.version import Version
 
 
-          def main(args: list[str]) -> int:
+          def main(args: list[str], plugins: list[object] | None = None) -> int:
+              assert plugins is not None and len(plugins) == 1
               assert Path(__file__).resolve().is_relative_to(Path("/input/target"))
               assert _pytest.__version__ == "9.0.0"
               assert Version(_pytest.__version__) >= Version("8.0")
