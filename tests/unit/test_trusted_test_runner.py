@@ -257,3 +257,38 @@ def test_runner_respects_target_configured_testpaths(
     assert captured[4].startswith("cache_dir=")
     assert captured[5:] == ["-o", "xfail_strict=true"]
     assert str(tmp_path / "target") not in captured
+
+
+def test_xpass_gate_rejects_non_strict_xpass() -> None:
+    from code_test_lab.trusted_test_runner import _XpassGate
+
+    class Report:
+        when = "call"
+        outcome = "passed"
+        wasxfail = "known issue; strict=False"
+
+        nodeid = "sample.py::test_unexpected_pass"
+
+    gate = _XpassGate()
+    gate.pytest_runtest_logreport(Report())
+    assert gate.xpasses == ["sample.py::test_unexpected_pass"]
+
+    class Session:
+        exitstatus = 0
+
+    session = Session()
+    gate.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == 1
+
+
+def test_xpass_gate_ignores_regular_pass_and_non_call_reports() -> None:
+    from code_test_lab.trusted_test_runner import _XpassGate
+
+    class Report:
+        when = "call"
+        outcome = "passed"
+        nodeid = "sample.py::test_pass"
+
+    gate = _XpassGate()
+    gate.pytest_runtest_logreport(Report())
+    assert gate.xpasses == []
