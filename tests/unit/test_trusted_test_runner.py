@@ -10,6 +10,7 @@ import pytest
 
 from code_test_lab.trusted_test_runner import (
     configure_target_import_paths,
+    configure_subprocess_pytest_version,
     configure_target_pytest_version,
 )
 
@@ -142,6 +143,31 @@ def test_target_pytest_uses_validated_prepared_distribution_version(
     assert sys.modules["_pytest._version"].version == "9.0.0"
     assert sys.modules["_pytest._version"].version_tuple == (9, 0, 0)
     assert target_pytest._version is sys.modules["_pytest._version"]
+    assert os.environ["TARGET_PYTEST_VERSION"] == "9.0.0"
+
+
+def test_subprocess_bootstrap_installs_validated_pytest_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_pytest = types.ModuleType("_pytest")
+    monkeypatch.setitem(sys.modules, "_pytest", target_pytest)
+    monkeypatch.setenv("TARGET_PYTEST_VERSION", "9.2.0+sandbox.g123456789abc")
+
+    configure_subprocess_pytest_version()
+
+    assert target_pytest.__version__ == "9.2.0+sandbox.g123456789abc"
+    assert target_pytest.version_tuple == (9, 2, 0)
+    assert sys.modules["_pytest._version"].version == "9.2.0+sandbox.g123456789abc"
+    assert sys.modules["_pytest._version"].version_tuple == (9, 2, 0)
+
+
+def test_subprocess_bootstrap_rejects_invalid_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TARGET_PYTEST_VERSION", "not-a-version")
+
+    with pytest.raises(RuntimeError, match="environment value is invalid"):
+        configure_subprocess_pytest_version()
 
 
 def test_target_pytest_rejects_missing_or_invalid_distribution_version(
