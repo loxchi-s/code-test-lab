@@ -222,6 +222,9 @@ jobs:
           }
           trap restore_workflow_commands EXIT
           printf '::stop-commands::%s\n' "$marker"
+          # Keep target pytest plugin autoload enabled: the target suite may
+          # rely on normal entry-point loading. Plugins execute only inside
+          # this networkless, credential-free, resource-limited container.
           docker run --rm --name "$TEST_CONTAINER" \
             --network none \
             --read-only \
@@ -235,9 +238,6 @@ jobs:
             --env http_proxy= --env https_proxy= --env all_proxy= --env ftp_proxy= --env no_proxy= \
             --env XDG_CACHE_HOME=/tmp/cache \
             --env HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis \
-            # Keep target pytest plugin autoload enabled: the target suite may
-            # rely on normal entry-point loading. Plugins execute only inside
-            # this networkless, credential-free, resource-limited container.
             --env "TARGET_DISTRIBUTION=${TARGET_DISTRIBUTION}" \
             --cap-drop ALL --security-opt no-new-privileges \
             --user 10001:10001 \
