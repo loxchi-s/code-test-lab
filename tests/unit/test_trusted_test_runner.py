@@ -238,7 +238,8 @@ def test_runner_respects_target_configured_testpaths(
 ) -> None:
     import code_test_lab.trusted_test_runner as runner
 
-    captured: list[str] = []\n    captured_plugins: list[object] = []
+    captured: list[str] = []
+    captured_plugins: list[object] = []
     monkeypatch.setattr(
         runner,
         "configure_target_import_paths",
