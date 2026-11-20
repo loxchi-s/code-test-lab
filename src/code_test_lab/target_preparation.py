@@ -76,7 +76,9 @@ def _validate_setuptools_package_dir(tool: dict[str, Any]) -> None:
 
         mapped_path = PurePosixPath(directory)
         if mapped_path.is_absolute() or ".." in mapped_path.parts:
-            raise ValueError("target package-dir paths must not be absolute or traverse parent directories")
+            raise ValueError(
+                "target package-dir paths must not be absolute or traverse parent directories"
+            )
 
         package_parts = package.split(".") if package else []
         if package_parts and any(not part.isidentifier() for part in package_parts):
@@ -92,7 +94,10 @@ def _validate_setuptools_package_dir(tool: dict[str, Any]) -> None:
         import_root = PurePosixPath(*root_parts).as_posix() if root_parts else "."
         if import_root not in {".", "src"}:
             raise ValueError(
-                "target package-dir mappings must resolve under the project root or src import roots"
+                (
+                    "target package-dir mappings must resolve under the project root "
+                    "or src import roots"
+                )
             )
 
 
@@ -144,7 +149,9 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     if _canonicalize_distribution_name(name) != "pytest" and not any(
         _requirement_name(item) == "pytest" for item in dev_dependencies
     ):
-        raise ValueError("target dev extra must include pytest unless the target distribution is pytest")
+        raise ValueError(
+            "target dev extra must include pytest unless the target distribution is pytest"
+        )
 
     build_system = document.get("build-system", {})
     if not isinstance(build_system, dict):
@@ -167,7 +174,9 @@ def read_target_project(source: Path) -> TargetProjectMetadata:
     ):
         raise ValueError("VCS-based Hatch versioning requires hatch-vcs in build-system.requires")
     if "setuptools_scm" in tool and "setuptools-scm" not in build_requirement_names:
-        raise ValueError("setuptools-scm configuration requires setuptools-scm in build-system.requires")
+        raise ValueError(
+            "setuptools-scm configuration requires setuptools-scm in build-system.requires"
+        )
 
     uses_dynamic_version = "version" in dynamic
     hatch_vcs_configured = (
