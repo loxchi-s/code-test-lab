@@ -367,7 +367,10 @@ def test_prepare_cli_rejects_invalid_seed_version(
 def test_dependency_requirements_reject_unicode_line_separators(tmp_path: Path) -> None:
     for separator in ("\u0085", "\u2028", "\u2029"):
         source = tmp_path / f"target-{ord(separator):04x}"
-        _write_project(source, dependencies=(f"iniconfig>=2{separator}--index-url=https://invalid",))
+        _write_project(
+            source,
+            dependencies=(f"iniconfig>=2{separator}--index-url=https://invalid",),
+        )
         _assert_raises(
             ValueError,
             "unsafe requirement line",
