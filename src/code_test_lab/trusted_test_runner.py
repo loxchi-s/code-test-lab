@@ -1,4 +1,4 @@
-"""Run target tests with the harness-owned Python interpreter."""
+""""Run target tests with the harness-owned Python interpreter."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import sysconfig
+import tempfile
 import types
 from importlib import metadata
 from pathlib import Path
@@ -116,9 +117,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-pytest", action="store_true")
     args = parser.parse_args(argv)
 
-    # All writable test state stays on the container's bounded /tmp tmpfs.
-    os.environ.setdefault("HYPOTHESIS_STORAGE_DIRECTORY", "/tmp/hypothesis")
-    os.environ["PYTEST_ADDOPTS"] = "-o cache_dir=/tmp/pytest-cache"
+    # Resolve writable test state beneath the container's bounded temporary mount.
+    temporary_root = Path(tempfile.gettempdir())
+    hypothesis_storage = temporary_root / "hypothesis"
+    pytest_cache = temporary_root / "pytest-cache"
+    os.environ.setdefault("HYPOTHESIS_STORAGE_DIRECTORY", str(hypothesis_storage))
+    os.environ["PYTEST_ADDOPTS"] = f"-o cache_dir={pytest_cache}"
 
     try:
         if args.target_pytest:
@@ -139,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     return int(pytest.main([
         "-q",
         "-o",
-        "cache_dir=/tmp/pytest-cache",
+        f"cache_dir={pytest_cache}",
         str(args.source.resolve()),
     ]))
 
