@@ -99,10 +99,10 @@ def configure_target_pytest_version(site_packages: Path) -> None:
         raise ValueError("prepared pytest distribution has invalid version metadata") from exc
 
     # The source checkout omits setuptools-scm's generated _pytest/_version.py.
-    # Restore validated distribution metadata in this process and export only
-    # that validated version for the trusted child-process bootstrap.
+    # Restore metadata from the prepared distribution in this process. Child
+    # interpreters independently read the same read-only distribution metadata;
+    # they must not trust an environment variable that target tests can mutate.
     _install_pytest_version(version)
-    os.environ["TARGET_PYTEST_VERSION"] = str(version)
 
 
 class _PytestVersionLoader(importlib.abc.Loader):
@@ -137,19 +137,36 @@ class _PytestVersionFinder(importlib.abc.MetaPathFinder):
         return importlib.machinery.ModuleSpec(fullname, self.loader)
 
 
+TARGET_VENV_PATH = Path("/sandbox/venv")
+
+
 def configure_subprocess_pytest_version() -> None:
-    """Bootstrap target pytest metadata lazily in child interpreters via sitecustomize."""
-    version_text = os.environ.get("TARGET_PYTEST_VERSION")
-    if not version_text:
+    """Bootstrap pytest metadata from the read-only prepared venv in child interpreters."""
+    site_packages = sorted((TARGET_VENV_PATH / "lib").glob("python*/site-packages"))
+    if not site_packages:
         return
+    if len(site_packages) != 1 or not site_packages[0].is_dir():
+        raise RuntimeError("prepared target venv has ambiguous site-packages directories")
+
+    matches = [
+        distribution
+        for distribution in metadata.distributions(path=[str(site_packages[0])])
+        if (distribution.metadata.get("Name") or "").lower() == "pytest"
+    ]
+    if not matches:
+        return
+    if len(matches) != 1:
+        raise RuntimeError("prepared target venv has ambiguous pytest distribution metadata")
+
     try:
-        version = Version(version_text)
+        version = Version(matches[0].version)
     except InvalidVersion as exc:
-        raise RuntimeError("trusted pytest version environment value is invalid") from exc
+        raise RuntimeError("prepared target pytest distribution has invalid version metadata") from exc
 
     # Do not import _pytest from sitecustomize: that runs before pytest's normal
     # startup and can change plugin initialization order. Resolve its generated
-    # version module only when target pytest imports it.
+    # version module only when target pytest imports it. The venv is mounted
+    # read-only in the test container, so target code cannot rewrite this source.
     sys.meta_path[:] = [
         finder for finder in sys.meta_path if not isinstance(finder, _PytestVersionFinder)
     ]
