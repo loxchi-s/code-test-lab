@@ -427,7 +427,10 @@ def test_ci_smokes_trusted_runner_against_poisoned_environment() -> None:
 
 
 def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
-    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    ci_workflow = yaml.load(
+        CI_WORKFLOW_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
     steps = ci_workflow["jobs"]["quality"]["steps"]
     smoke = next(
         step for step in steps
@@ -451,7 +454,10 @@ def test_ci_smokes_bounded_host_tmpfs_persistence_and_readonly_mount() -> None:
 
 
 def test_ci_scans_full_image_sbom_and_pypi_inventory() -> None:
-    ci_workflow = yaml.load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    ci_workflow = yaml.load(
+        CI_WORKFLOW_PATH.read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
     steps = ci_workflow["jobs"]["quality"]["steps"]
     install = next(
         step for step in steps
