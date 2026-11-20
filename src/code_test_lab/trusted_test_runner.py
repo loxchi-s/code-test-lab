@@ -150,8 +150,8 @@ class _XpassGate:
     def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
         if self.xpasses:
             print(
-                "\\nXPASS correctness gate rejected unexpected passes:\\n"
-                + "\\n".join(f" - {nodeid}" for nodeid in self.xpasses),
+                "\nXPASS correctness gate rejected unexpected passes:\n"
+                + "\n".join(f" - {nodeid}" for nodeid in self.xpasses),
                 file=sys.stderr,
             )
             session.exitstatus = 1
