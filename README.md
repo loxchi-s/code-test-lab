@@ -4,7 +4,8 @@
 
 - [Repository](https://github.com/loxchi-s/code-test-lab)
 - [GitHub Actions](https://docs.github.com/actions)
-- [Docker](https://docs.docker.com/)
+- [Docker](https://docs.docker.com/) — build only for a trusted checkout
+- [Manual workflow prerequisites](https://docs.github.com/actions/managing-workflow-runs/manually-running-a-workflow): workflow must exist on the default branch
 - [pytest](https://pytest.org/)
 - [CodeRabbit AI Code Review](https://www.coderabbit.ai/)
 - [CodeRabbit GitHub App installation](https://github.com/apps/coderabbit)
