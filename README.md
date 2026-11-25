@@ -1,5 +1,7 @@
 # code-test-lab
 
+[Project usage guide](docs/usage.md) — installation, checks, sandbox workflow, and security gates.
+
 ## References
 
 - [Repository](https://github.com/loxchi-s/code-test-lab)
