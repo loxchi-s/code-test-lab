@@ -40,7 +40,7 @@ def resolve_docker_target() -> DockerTarget:
     try:
         result = subprocess.run(  # noqa: S603 - fixed Docker subcommand, argv only, and shell=False.
             [docker_executable, "context", "show"],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed Docker executable and argv; no shell.\n            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker context resolution exceeded 10 seconds") from exc
@@ -61,7 +61,7 @@ def _require_pid_limit_support(target: DockerTarget) -> None:
                 target.executable, *target.global_args,
                 "info", "--format", "{{json .}}",
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed Docker executable and argv; no shell.\n            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker daemon capability inspection exceeded 10 seconds") from exc
@@ -104,7 +104,7 @@ def resolve_image_id(image: str, docker_target: DockerTarget | None = None) -> s
                 target.executable, *target.global_args,
                 "image", "inspect", "--format", "{{json .}}", image,
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - validated image and fixed inspect argv; no shell.\n            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker image inspection exceeded 10 seconds") from exc
@@ -198,7 +198,7 @@ def remove_container(
                 target.executable, *target.global_args,
                 "rm", "--force", container_name,
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed cleanup argv and generated container name.\n            shell=False, timeout=10, capture_output=True, text=True,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
         print(
