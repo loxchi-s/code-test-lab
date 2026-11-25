@@ -55,7 +55,7 @@ def main() -> int:
         previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, _raise_on_sigterm)
         try:
-            completed = subprocess.run(  # noqa: S603 - validated argv; no shell; policy bounds the container.
+            completed = subprocess.run(  # nosec B603 - validated argv; no shell; policy bounds the container. noqa: S603
                 docker_argv, check=False, shell=False,
                 timeout=float(execution["timeout_minutes"]) * 60,
             )
