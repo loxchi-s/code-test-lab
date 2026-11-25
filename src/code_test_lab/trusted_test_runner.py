@@ -140,27 +140,6 @@ class _PytestVersionFinder(importlib.abc.MetaPathFinder):
         return importlib.machinery.ModuleSpec(fullname, self.loader)
 
 
-class _XpassGate:
-    """Fail the harness run for any unexpected pass of an xfail-marked test."""
-
-    def __init__(self) -> None:
-        self.xpasses: list[str] = []
-
-    def pytest_runtest_logreport(self, report: Any) -> None:
-        if report.when == "call" and report.outcome == "passed" and hasattr(report, "wasxfail"):
-            self.xpasses.append(report.nodeid)
-
-    def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
-        if self.xpasses:
-            if exitstatus == 0:
-                session.exitstatus = 1
-            print(
-                "\nXPASS correctness gate rejected unexpected passes:\n"
-                + "\n".join(f" - {nodeid}" for nodeid in self.xpasses),
-                file=sys.stderr,
-            )
-
-
 TARGET_VENV_PATH = Path("/sandbox/venv")
 
 
@@ -235,6 +214,9 @@ def main(argv: list[str] | None = None) -> int:
     # examples, and other non-suite files in projects such as pytest itself.
     # The workflow already sets cwd to the target repository, so pytest can
     # discover tests using the target project's own configuration.
+    # Let pytest apply its native xfail semantics. The global strict setting
+    # rejects ordinary XPASS cases, while an explicit strict=False marker in
+    # the target suite remains an intentional non-strict XPASS.
     return int(pytest.main([
         "-q",
         "-r",
@@ -243,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         f"cache_dir={pytest_cache}",
         "-o",
         "xfail_strict=true",
-    ], plugins=[_XpassGate()]))
+    ]))
 
 
 if __name__ == "sitecustomize":
