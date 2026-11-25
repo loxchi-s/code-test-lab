@@ -89,7 +89,7 @@ The manual workflow is separate from normal pull-request CI. Keep the default br
 
 The pull-request workflow requires these additional checks:
 
-- **OS Package Vulnerability Scan**: generates a container SBOM and scans Debian OS packages with Grype; High and Critical findings block the check.
+- **OS Package Vulnerability Scan**: generates a complete container SBOM, verifies that supported OS package components are present (APK, Debian, RPM, ALPM, or Portage), and scans the full image inventory with Grype; High and Critical findings block the check.
 - **Dependency Review**: reviews dependency changes for High and Critical vulnerabilities. Enable **Settings → Advanced Security → Dependency graph** for this public repository.
 - **Test Coverage Gate**: runs tests in the restricted container and requires at least 80% combined line and branch coverage.
 
