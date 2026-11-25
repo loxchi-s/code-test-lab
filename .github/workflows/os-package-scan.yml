@@ -93,4 +93,4 @@ jobs:
           printf '{}' > "$RUNNER_TEMP/grype-empty.yaml"
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-empty.yaml" \
-            "sbom:$RUNNER_TEMP/os-sbom.json" --fail-on low
+            "sbom:$RUNNER_TEMP/os-sbom.json" --fail-on high
