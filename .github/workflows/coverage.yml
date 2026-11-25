@@ -1,0 +1,44 @@
+name: Test Coverage Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Test Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build test image without secrets
+        run: docker build --pull --tag code-test-lab-coverage:${{ github.sha }} .
+
+      - name: Measure line and branch coverage in restricted container
+        run: |
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 256 \
+            --env PYTHONPYCACHEPREFIX=/tmp/pycache --env XDG_CACHE_HOME=/tmp/cache \
+            --env COVERAGE_FILE=/tmp/.coverage \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user 10001:10001 \
+            --entrypoint /bin/sh \
+            "code-test-lab-coverage:${{ github.sha }}" \
+            -ec 'python -m pytest -q -p no:cacheprovider \
+              --cov=code_test_lab \
+              --cov-branch \
+              --cov-report=term-missing \
+              --cov-fail-under=80'

@@ -1,0 +1,90 @@
+name: OS Package Vulnerability Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  os-package-scan:
+    name: OS Package Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build validation image without secrets
+        run: docker build --pull --tag code-test-lab-os-scan:${{ github.sha }} .
+
+      - name: Install trusted Syft image scanner
+        run: |
+          scanner_dir="$(mktemp -d "$RUNNER_TEMP/syft.XXXXXX")"
+          curl --fail --silent --show-error --location \
+            https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_linux_amd64.tar.gz \
+            --output "$scanner_dir/syft.tar.gz"
+          echo "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c  $scanner_dir/syft.tar.gz" \
+            | sha256sum --check
+          tar -xzf "$scanner_dir/syft.tar.gz" -C "$scanner_dir" syft
+          sudo install "$scanner_dir/syft" /usr/local/bin/syft
+
+      - name: Generate complete image SBOM without executing the image
+        run: |
+          printf '{}' > "$RUNNER_TEMP/syft-empty.yaml"
+          cd "$RUNNER_TEMP"
+          syft --config "$RUNNER_TEMP/syft-empty.yaml" \
+            "code-test-lab-os-scan:${{ github.sha }}" \
+            -o "cyclonedx-json=$RUNNER_TEMP/image-sbom.json"
+
+      - name: Verify SBOM contains operating-system packages
+        run: |
+          python -I - "$RUNNER_TEMP/image-sbom.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              sbom = json.load(stream)
+
+          components = sbom.get("components")
+          if not isinstance(components, list):
+              raise SystemExit("SBOM has no valid components list")
+
+          os_types = {"apk", "deb", "rpm", "alpm", "portage"}
+          os_components = [
+              component
+              for component in components
+              if isinstance(component, dict)
+              and isinstance(component.get("purl"), str)
+              and component["purl"].startswith(tuple(f"pkg:{kind}/" for kind in os_types))
+          ]
+          if not os_components:
+              raise SystemExit(
+                  "No supported OS package components found; refusing to report a false pass"
+              )
+          print(f"Verified {len(os_components)} OS package components across the image SBOM")
+          PY
+
+      - name: Install trusted Grype vulnerability scanner
+        run: |
+          scanner_dir="$(mktemp -d "$RUNNER_TEMP/grype.XXXXXX")"
+          curl --fail --silent --show-error --location \
+            https://github.com/anchore/grype/releases/download/v0.122.0/grype_0.122.0_linux_amd64.tar.gz \
+            --output "$scanner_dir/grype.tar.gz"
+          echo "e697e6f7224637df87e267e4318cc027feae99a8e1b80280241d32b9ee5d4920  $scanner_dir/grype.tar.gz" \
+            | sha256sum --check
+          tar -xzf "$scanner_dir/grype.tar.gz" -C "$scanner_dir" grype
+          sudo install "$scanner_dir/grype" /usr/local/bin/grype
+
+      - name: Scan complete image SBOM with Grype
+        run: |
+          printf '{}' > "$RUNNER_TEMP/grype-empty.yaml"
+          cd "$RUNNER_TEMP"
+          grype --config "$RUNNER_TEMP/grype-empty.yaml" \
+            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on high
