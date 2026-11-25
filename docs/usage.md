@@ -7,7 +7,7 @@
 - Docker for the local policy-driven container runner
 - Optional: uv
 - Runtime dependency: PyYAML
-- Development dependencies: pytest, Ruff, mypy, pip-audit, Bandit, and types-PyYAML
+- Development dependencies: pytest, pytest-cov, Ruff, mypy, pip-audit, Bandit, and types-PyYAML
 
 ## Install
 
@@ -40,7 +40,7 @@ sh scripts/security.sh
 Individual commands:
 
 ```bash
-python -m pytest -q
+python -m pytest -q --cov=code_test_lab --cov-branch --cov-fail-under=80
 ruff check src tests
 mypy src
 pip-audit
@@ -84,3 +84,13 @@ The manual workflow is separate from normal pull-request CI. Keep the default br
 - Never expose GitHub credentials or secrets to test containers.
 - Unit tests must remain runnable without a database or network.
 - A green workflow validates only the checks it executes; it does not prove interactive Sandbox connectivity or every production security property.
+
+## Pull request security gates
+
+The pull-request workflow requires these additional checks:
+
+- **OS Package Vulnerability Scan**: generates a container SBOM and scans Debian OS packages with Grype; High and Critical findings block the check.
+- **Dependency Review**: reviews dependency changes for High and Critical vulnerabilities. Enable **Settings → Advanced Security → Dependency graph** for this public repository.
+- **Test Coverage Gate**: runs tests in the restricted container and requires at least 80% combined line and branch coverage.
+
+These checks report only the properties they measure. A passing workflow is not a complete security certification.
