@@ -56,7 +56,7 @@ def resolve_docker_target() -> DockerTarget:
 def _require_pid_limit_support(target: DockerTarget) -> None:
     """Fail closed unless the daemon confirms all resource-limit capabilities."""
     try:
-        result = subprocess.run(  # noqa: S603 - Docker executable and subcommand are fixed; target is argv-only.
+        result = subprocess.run(  # nosec B603 - Docker executable and subcommand are fixed; target is argv-only. noqa: S603
             [
                 target.executable, *target.global_args,
                 "info", "--format", "{{json .}}",
@@ -99,7 +99,7 @@ def resolve_image_id(image: str, docker_target: DockerTarget | None = None) -> s
     target = docker_target or resolve_docker_target()
     _require_pid_limit_support(target)
     try:
-        result = subprocess.run(  # noqa: S603 - executable and inspect argv are fixed; image is validated.
+        result = subprocess.run(  # nosec B603 - executable and inspect argv are fixed; image is validated. noqa: S603
             [
                 target.executable, *target.global_args,
                 "image", "inspect", "--format", "{{json .}}", image,
@@ -193,7 +193,7 @@ def remove_container(
         )
         return False
     try:
-        result = subprocess.run(  # noqa: S603 - fixed cleanup argv and validated generated container name.
+        result = subprocess.run(  # nosec B603 - fixed cleanup argv and validated generated container name. noqa: S603
             [
                 target.executable, *target.global_args,
                 "rm", "--force", container_name,
