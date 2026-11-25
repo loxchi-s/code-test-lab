@@ -105,7 +105,11 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "CLI orchestration must not depend on compatibility facade"
 type = "forbidden"
-source_modules = ["code_test_lab.isolation", "code_test_lab.target_preparation"]
+source_modules = ["code_test_lab.cli"]
+forbidden_modules = [
+  "code_test_lab.isolation",
+  "code_test_lab.target_preparation",
+]
 
 [[tool.importlinter.contracts]]
 name = "Target preparation must not depend on runtime orchestration"
