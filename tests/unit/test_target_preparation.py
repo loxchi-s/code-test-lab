@@ -5,6 +5,7 @@ from pathlib import Path
 from code_test_lab.target_preparation import (
     main,
     prepare_target_source,
+    read_target_project,
     scm_version_overrides,
 )
 
@@ -78,6 +79,28 @@ def test_prepare_source_excludes_git_and_returns_static_dependency_contract(tmp_
     assert not (destination / ".git").exists()
     assert (destination / ".hidden").read_text(encoding="utf-8") == "preserved"
     assert (destination / "tests" / "test_sample.py").is_file()
+
+
+def test_pytest_dev_extra_includes_external_test_suite_dependencies(tmp_path: Path) -> None:
+    source = tmp_path / "target"
+    _write_project(
+        source,
+        name="pytest",
+        dev_requirements=(
+            "hypothesis>=6.75",
+            "attrs>=23.1",
+            "xmlschema",
+        ),
+    )
+
+    metadata = read_target_project(source)
+
+    assert metadata.requirements == (
+        "iniconfig>=2",
+        "hypothesis>=6.75",
+        "attrs>=23.1",
+        "xmlschema",
+    )
 
 
 def test_setuptools_scm_requirement_names_are_pep503_normalized(tmp_path: Path) -> None:
