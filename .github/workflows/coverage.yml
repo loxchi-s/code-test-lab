@@ -40,4 +40,5 @@ jobs:
             -ec 'python -m pytest -q -p no:cacheprovider \
               --cov=code_test_lab \
               --cov-branch \
-              --cov-report=term-missing'
+              --cov-report=term-missing \
+              --cov-fail-under=80'
