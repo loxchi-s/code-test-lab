@@ -113,6 +113,143 @@ jobs:
           SANDBOX_CONTAINER: sandbox-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker rm -f "$SANDBOX_CONTAINER" || true
 
+      - name: Smoke test trusted runner against poisoned prepared environment
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
+        timeout-minutes: 3
+        run: |
+          workspace="$(mktemp -d "$RUNNER_TEMP/trusted-runner.XXXXXX")"
+          source="$workspace/source"
+          container="sandbox-trusted-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+          target_container="${container}-target-pytest"
+          cleanup() {
+            docker rm -f "$container" "$target_container" >/dev/null 2>&1 || true
+            rm -rf "$workspace"
+          }
+          trap cleanup EXIT
+          mkdir -p "$source" "$workspace/venv/bin" "$workspace/venv/lib/python3.12/site-packages"
+          chmod 0755 "$workspace"
+          printf '#!/bin/sh\nexit 97\n' > "$workspace/venv/bin/python"
+          chmod 0755 "$workspace/venv/bin/python"
+          printf 'raise RuntimeError("untrusted pytest imported")\n' \
+            > "$workspace/venv/lib/python3.12/site-packages/pytest.py"
+          mkdir -p "$source/src/pytest" "$source/src/_pytest"
+          mkdir -p "$workspace/venv/lib/python3.12/site-packages/pytest-9.0.0.dist-info"
+          printf 'Metadata-Version: 2.1\nName: pytest\nVersion: 9.0.0\n' \
+            > "$workspace/venv/lib/python3.12/site-packages/pytest-9.0.0.dist-info/METADATA"
+          cat > "$source/src/_pytest/__init__.py" <<'PY'
+          try:
+              from ._version import version as __version__
+              from ._version import version_tuple
+          except ImportError:
+              __version__ = "unknown"
+              version_tuple = (0, 0, "unknown")
+          PY
+          cat > "$source/src/pytest/__init__.py" <<'PY'
+          from pathlib import Path
+
+          import _pytest
+          from packaging.version import Version
+
+
+          def main(args: list[str], plugins: list[object] | None = None) -> int:
+              assert plugins is not None and len(plugins) == 1
+              assert Path(__file__).resolve().is_relative_to(Path("/input/target"))
+              assert _pytest.__version__ == "9.0.0"
+              assert Version(_pytest.__version__) >= Version("8.0")
+              return 97
+          PY
+          cat > "$source/test_runner_boundary.py" <<'PY'
+          import sys
+          from pathlib import Path
+
+          import pytest
+
+
+          def test_harness_runner_and_pytest_are_trusted() -> None:
+              assert sys.executable == "/opt/trusted-runner/bin/python"
+              assert not Path(pytest.__file__).resolve().is_relative_to(Path("/sandbox/venv"))
+          PY
+          docker run --rm --name "$container" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
+            --mount "type=bind,src=$source,dst=/input/target,readonly" \
+            --workdir /input/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
+            -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv'
+          set +e
+          docker run --rm --name "$target_container" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/sandbox,readonly" \
+            --mount "type=bind,src=$source,dst=/input/target,readonly" \
+            --workdir /input/target \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint /bin/sh "code-test-lab:${{ github.sha }}" \
+            -ec 'exec /opt/trusted-runner/bin/python -I -B /opt/trusted-runner/trusted_test_runner.py --source /input/target --venv /sandbox/venv --target-pytest'
+          target_status=$?
+          set -e
+          if [[ "$target_status" -ne 97 ]]; then
+            echo "::error::target pytest smoke returned $target_status; expected sentinel 97"
+            exit 1
+          fi
+
+      - name: Smoke test bounded host tmpfs workspace lifecycle
+        id: tmpfs-smoke
+        if: ${{ !cancelled() && steps.build-image.outcome == 'success' && steps.docker-capabilities.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          WRITE_CONTAINER: sandbox-tmpfs-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-tmpfs-read-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          workspace="$(mktemp -d "$RUNNER_TEMP/sandbox-tmpfs-smoke.XXXXXX")"
+          printf 'workspace=%s\n' "$workspace" >> "$GITHUB_OUTPUT"
+          sudo mount -t tmpfs -o size=64m,uid=10001,gid=10001,mode=0755 tmpfs "$workspace"
+          docker run --rm --name "$WRITE_CONTAINER" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/workspace" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint python "code-test-lab:${{ github.sha }}" \
+            -I -B -c 'from pathlib import Path; Path("/workspace/probe").write_text("ok")'
+          docker run --rm --name "$READ_CONTAINER" \
+            --network none --read-only \
+            --mount "type=bind,src=$workspace,dst=/workspace,readonly" \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --memory 128m --memory-swap 128m --cpus 1 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges --user 10001:10001 \
+            --entrypoint python "code-test-lab:${{ github.sha }}" \
+            -I -B -c 'from pathlib import Path
+          import errno
+          probe = Path("/workspace/probe")
+          assert probe.read_text() == "ok"
+          try:
+              probe.write_text("blocked")
+          except OSError as error:
+              assert error.errno == errno.EROFS
+          else:
+              raise AssertionError("workspace mount was writable")'
+
+      - name: Remove tmpfs smoke containers and unmount workspace
+        if: ${{ always() }}
+        env:
+          WORKSPACE: ${{ steps.tmpfs-smoke.outputs.workspace }}
+          WRITE_CONTAINER: sandbox-tmpfs-write-${{ github.run_id }}-${{ github.run_attempt }}
+          READ_CONTAINER: sandbox-tmpfs-read-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker rm -f "$WRITE_CONTAINER" "$READ_CONTAINER" >/dev/null 2>&1 || true
+          if [[ -n "$WORKSPACE" && "$WORKSPACE" == "$RUNNER_TEMP"/sandbox-tmpfs-smoke.* ]]; then
+            if mountpoint -q "$WORKSPACE"; then
+              sudo umount "$WORKSPACE"
+            fi
+            rmdir "$WORKSPACE" 2>/dev/null || true
+          fi
+
       - name: Install trusted Syft image scanner
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
@@ -169,6 +306,7 @@ jobs:
           PY
 
       - name: Install trusted Grype vulnerability scanner
+        id: install-grype
         if: ${{ !cancelled() && steps.build-image.outcome == 'success' }}
         run: |
           scanner_dir="$(mktemp -d "$RUNNER_TEMP/grype.XXXXXX")"
@@ -187,3 +325,11 @@ jobs:
           cd "$RUNNER_TEMP"
           grype --config "$RUNNER_TEMP/grype-empty.yaml" \
             "sbom:$RUNNER_TEMP/python-sbom.json" --fail-on low
+
+      - name: Scan full image SBOM with trusted Grype
+        if: ${{ !cancelled() && steps.image-sbom.outcome == 'success' && steps.install-grype.outcome == 'success' }}
+        run: |
+          printf '{}' > "$RUNNER_TEMP/grype-full-empty.yaml"
+          cd "$RUNNER_TEMP"
+          grype --config "$RUNNER_TEMP/grype-full-empty.yaml" \
+            "sbom:$RUNNER_TEMP/image-sbom.json" --fail-on high

@@ -38,9 +38,10 @@ def resolve_docker_target() -> DockerTarget:
         return DockerTarget(docker_executable, ("--context", context))
 
     try:
-        result = subprocess.run(  # nosec B603 - fixed Docker subcommand, argv only, and shell=False.
+        result = subprocess.run(  # noqa: S603 - fixed Docker subcommand, argv only, and shell=False.
             [docker_executable, "context", "show"],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed Docker executable and argv; no shell.
+            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker context resolution exceeded 10 seconds") from exc
@@ -56,12 +57,13 @@ def resolve_docker_target() -> DockerTarget:
 def _require_pid_limit_support(target: DockerTarget) -> None:
     """Fail closed unless the daemon confirms all resource-limit capabilities."""
     try:
-        result = subprocess.run(  # nosec B603 - Docker executable and subcommand are fixed; target is argv-only.
+        result = subprocess.run(  # noqa: S603  # nosec B603 - Docker executable and subcommand are fixed; target is argv-only.
             [
                 target.executable, *target.global_args,
                 "info", "--format", "{{json .}}",
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed Docker executable and argv; no shell.
+            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker daemon capability inspection exceeded 10 seconds") from exc
@@ -99,12 +101,13 @@ def resolve_image_id(image: str, docker_target: DockerTarget | None = None) -> s
     target = docker_target or resolve_docker_target()
     _require_pid_limit_support(target)
     try:
-        result = subprocess.run(  # nosec B603 - executable and inspect argv are fixed; image is validated.
+        result = subprocess.run(  # noqa: S603  # nosec B603 - executable and inspect argv are fixed; image is validated.
             [
                 target.executable, *target.global_args,
                 "image", "inspect", "--format", "{{json .}}", image,
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - validated image and fixed inspect argv; no shell.
+            shell=False, timeout=10, capture_output=True, text=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise ValueError("Docker image inspection exceeded 10 seconds") from exc
@@ -193,12 +196,13 @@ def remove_container(
         )
         return False
     try:
-        result = subprocess.run(  # nosec B603 - fixed cleanup argv and validated generated container name.
+        result = subprocess.run(  # noqa: S603  # nosec B603 - fixed cleanup argv and validated generated container name.
             [
                 target.executable, *target.global_args,
                 "rm", "--force", container_name,
             ],
-            check=False, shell=False, timeout=10, capture_output=True, text=True,
+            check=False,  # nosec B603 - fixed cleanup argv and generated container name.
+            shell=False, timeout=10, capture_output=True, text=True,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
         print(
