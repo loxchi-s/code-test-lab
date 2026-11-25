@@ -259,88 +259,45 @@ def test_runner_respects_target_configured_testpaths(
     assert captured[:4] == ["-q", "-r", "fEXsx", "-o"]
     assert captured[4].startswith("cache_dir=")
     assert captured[5:] == ["-o", "xfail_strict=true"]
-    assert len(captured_plugins) == 1
-    assert type(captured_plugins[0]).__name__ == "_XpassGate"
+    assert captured_plugins == []
     assert str(tmp_path / "target") not in captured
 
 
-def test_xpass_gate_rejects_non_strict_xpass() -> None:
-    from code_test_lab.trusted_test_runner import _XpassGate
 
-    class Report:
-        when = "call"
-        outcome = "passed"
-        wasxfail = "known issue; strict=False"
-
-        nodeid = "sample.py::test_unexpected_pass"
-
-    gate = _XpassGate()
-    gate.pytest_runtest_logreport(Report())
-    assert gate.xpasses == ["sample.py::test_unexpected_pass"]
-
-    class Session:
-        exitstatus = 0
-
-    session = Session()
-    gate.pytest_sessionfinish(session, 0)
-    assert session.exitstatus == 1
-
-
-def test_xpass_gate_ignores_regular_pass_and_non_call_reports() -> None:
-    from code_test_lab.trusted_test_runner import _XpassGate
-
-    class Report:
-        when = "call"
-        outcome = "passed"
-        nodeid = "sample.py::test_pass"
-
-    gate = _XpassGate()
-    gate.pytest_runtest_logreport(Report())
-    assert gate.xpasses == []
-
-
-
-def test_xpass_gate_rejects_real_pytest_non_strict_xpass(
+def test_pytest_native_xfail_strictness_respects_explicit_marker(
     tmp_path: Path,
 ) -> None:
-    from code_test_lab.trusted_test_runner import _XpassGate
-
-    test_file = tmp_path / "test_real_xpass.py"
+    test_file = tmp_path / "test_xfail_semantics.py"
     test_file.write_text(
-        "import pytest\n"
-        "@pytest.mark.xfail(reason='synthetic regression', strict=False)\n"
-        "def test_unexpected_pass():\n"
-        "    assert True\n"
-        "def test_regular_pass():\n"
-        "    assert True\n",
+        "import pytest\\n"
+        "@pytest.mark.xfail(reason='explicit non-strict', strict=False)\\n"
+        "def test_intentional_non_strict_xpass():\\n"
+        "    assert True\\n"
+        "@pytest.mark.xfail(reason='strict regression', strict=True)\\n"
+        "def test_strict_xpass_is_failure():\\n"
+        "    assert True\\n",
         encoding="utf-8",
     )
 
-    gate = _XpassGate()
-    result = pytest.main(
-        ["-q", "-p", "no:cacheprovider", str(test_file)],
-        plugins=[gate],
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-o",
+            "xfail_strict=true",
+            str(test_file),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+        text=True,
     )
 
-    assert int(result) == 1
-    assert gate.xpasses == ["test_real_xpass.py::test_unexpected_pass"]
+    assert result.returncode == 1
+    assert "1 xpassed" in result.stdout
+    assert "1 failed" in result.stdout
 
-
-def test_xpass_gate_preserves_existing_nonzero_exit_status() -> None:
-    from code_test_lab.trusted_test_runner import _XpassGate
-
-    class Report:
-        when = "call"
-        outcome = "passed"
-        wasxfail = "known issue"
-        nodeid = "sample.py::test_unexpected_pass"
-
-    class Session:
-        exitstatus = 2
-
-    gate = _XpassGate()
-    gate.pytest_runtest_logreport(Report())
-    session = Session()
-    gate.pytest_sessionfinish(session, 2)
-
-    assert session.exitstatus == 2
