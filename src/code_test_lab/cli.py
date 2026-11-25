@@ -56,7 +56,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, _raise_on_sigterm)
         try:
             completed = subprocess.run(  # noqa: S603  # nosec B603 - validated argv; no shell; policy bounds the container.
-                docker_argv, check=False, shell=False,
+                docker_argv, check=False, shell=False,  # nosec B603 - validated argv; no shell; policy bounds the container.
                 timeout=float(execution["timeout_minutes"]) * 60,
             )
         finally:
